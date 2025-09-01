@@ -116,24 +116,42 @@ export default function CustomersPage() {
       products: data.products || [],
     };
     await dispatch(createCustomer(customerData)).unwrap();
+    // Refresh the customers list to show updated data
+    await dispatch(fetchCustomers()).unwrap();
   };
 
   const handleEdit = async (data: any, id: string) => {
     await dispatch(updateCustomer({ id, data })).unwrap();
+    // Refresh the customers list to show updated data
+    await dispatch(fetchCustomers()).unwrap();
   };
   
   const handleProductsChange = (products: Product[]) => {
     if (!currentCustomer) return;
     
-    const updatedCustomer = {
+    // Only update the local state, don't save to database immediately
+    setCurrentCustomer({
       ...currentCustomer,
       products,
-    };
+    });
+  };
+  
+  const handleSaveProducts = async () => {
+    if (!currentCustomer) return;
     
-    dispatch(updateCustomer({
-      id: currentCustomer._id,
-      data: updatedCustomer,
-    }));
+    try {
+      await dispatch(updateCustomer({
+        id: currentCustomer._id,
+        data: currentCustomer,
+      })).unwrap();
+      
+      // Refresh the customers list to get the updated data
+      await dispatch(fetchCustomers()).unwrap();
+      setViewMode("none");
+      setCurrentCustomer(null);
+    } catch (error) {
+      console.error('Failed to save products:', error);
+    }
   };
   
   const openProductsManager = (customer: Customer) => {
@@ -149,6 +167,8 @@ export default function CustomersPage() {
   const handleDelete = async (id: string) => {
     try {
       await dispatch(deleteCustomer(id)).unwrap();
+      // Refresh the customers list to show updated data
+      await dispatch(fetchCustomers()).unwrap();
     } catch (error) {
       console.error("Failed to delete customer:", error);
     }
@@ -257,6 +277,7 @@ export default function CustomersPage() {
                             onSubmit={(data) => handleEdit(data, customer._id)}
                             isLoading={isLoading}
                             mode="edit"
+                            key={`edit-${customer._id}-${JSON.stringify(customer.products)}`}
                           />
 
                           <AlertDialog>
@@ -311,12 +332,23 @@ export default function CustomersPage() {
               <CardHeader>
                 <CardTitle className="flex justify-between items-center">
                   <span>Products for {currentCustomer.customerName}</span>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setViewMode("none")}
-                  >
-                    Close
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={handleSaveProducts}
+                      disabled={isLoading}
+                    >
+                      Save Changes
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setViewMode("none");
+                        setCurrentCustomer(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent>

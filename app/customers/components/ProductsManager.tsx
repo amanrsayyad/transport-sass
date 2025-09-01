@@ -101,12 +101,12 @@ export function ProductsManager({
     const newProducts = [...products];
     
     if (editingProductIndex !== null) {
-      // Update existing product
+      // Update existing product with all data including categories
       newProducts[editingProductIndex] = {
         ...newProducts[editingProductIndex],
         productName: data.productName,
         productRate: data.productRate,
-        // Preserve existing categories
+        categories: data.categories,
       };
     } else {
       // Add new product
@@ -133,6 +133,7 @@ export function ProductsManager({
       };
       onChange(newProducts);
       setSelectedProductIndex(null);
+      categoryForm.reset({ categories: [] });
     }
   };
 
@@ -157,18 +158,27 @@ export function ProductsManager({
 
   // Open category manager for a product
   const handleManageCategories = (index: number) => {
+    // First clear any existing form state
+    categoryForm.reset({ categories: [] });
+    
     const product = products[index];
-    categoryForm.reset({
-      categories: product.categories || [],
-    });
     setSelectedProductIndex(index);
+    
+    // Use setTimeout to ensure the form is properly reset before setting new values
+    setTimeout(() => {
+      categoryForm.reset({
+        categories: product.categories || [],
+      });
+    }, 0);
     
     // If in readOnly mode and there are no categories, add an empty one to show the form structure
     if (readOnly && (!product.categories || product.categories.length === 0) && appendCategory) {
-      appendCategory({
-        categoryName: "",
-        categoryRate: 0,
-      });
+      setTimeout(() => {
+        appendCategory({
+          categoryName: "",
+          categoryRate: 0,
+        });
+      }, 10);
     }
   };
 
@@ -293,8 +303,11 @@ export function ProductsManager({
                       <Dialog
                         open={selectedProductIndex === index}
                         onOpenChange={(open) => {
-                          if (!open) setSelectedProductIndex(null);
-                          else handleManageCategories(index);
+                          if (!open) {
+                            setSelectedProductIndex(null);
+                          } else {
+                            handleManageCategories(index);
+                          }
                         }}
                       >
                         <DialogTrigger asChild>
@@ -398,7 +411,10 @@ export function ProductsManager({
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  onClick={() => setSelectedProductIndex(null)}
+                                  onClick={() => {
+                                    setSelectedProductIndex(null);
+                                    categoryForm.reset({ categories: [] });
+                                  }}
                                 >
                                   {readOnly ? "Close" : "Cancel"}
                                 </Button>

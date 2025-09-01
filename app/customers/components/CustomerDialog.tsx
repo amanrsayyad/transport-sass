@@ -84,13 +84,19 @@ export function CustomerDialog({
     },
   });
 
-  // Reset form when dialog opens and ensure clean state for create mode
+  // Reset form when dialog opens and ensure clean state for both create and edit modes
   useEffect(() => {
-    if (open && mode === "create") {
+    if (open) {
       form.reset(defaultValues);
       setProducts(defaultValues.products || []);
     }
   }, [open, mode, defaultValues, form]);
+
+  // Reset form when defaultValues change (for cases where data is updated while dialog is open)
+  useEffect(() => {
+    form.reset(defaultValues);
+    setProducts(defaultValues.products || []);
+  }, [defaultValues, form]);
 
   const handleSubmit = (data: z.infer<typeof customerSchema>) => {
     const customerData = {
