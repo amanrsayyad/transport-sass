@@ -538,7 +538,26 @@ const TripsPage = () => {
           </div>
           <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger asChild>
-              <Button onClick={() => setIsSheetOpen(true)}>
+              <Button onClick={() => {
+                setEditingTrip(null);
+                setFormData({
+                  date: [new Date()],
+                  startKm: 0,
+                  endKm: 0,
+                  driverId: "",
+                  driverName: "",
+                  vehicleId: "",
+                  vehicleNumber: "",
+                  status: "Draft",
+                  remarks: "",
+                  routeWiseExpenseBreakdown: []
+                });
+                setSelectedVehicleFuelData(null);
+                setSelectedDriverBudget(null);
+                setCustomerProducts([]);
+                setUserBanks([]);
+                setIsSheetOpen(true);
+              }}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Trip
               </Button>

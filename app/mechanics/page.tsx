@@ -238,6 +238,7 @@ export default function MechanicsPage() {
                         schema={mechanicSchema}
                         fields={mechanicFields}
                         defaultValues={defaultValues}
+                        mode="edit"
                         initialData={{
                           name: mechanic.name,
                           phone: mechanic.phone,
