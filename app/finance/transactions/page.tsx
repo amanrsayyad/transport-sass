@@ -12,6 +12,7 @@ import {
 } from '@/lib/redux/slices/transactionSlice';
 import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { DownloadButton } from '@/components/common/DownloadButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -117,9 +118,9 @@ const TransactionHistory = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR'
     }).format(amount);
   };
 
@@ -184,10 +185,7 @@ const TransactionHistory = () => {
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
+          <DownloadButton module="transactions" data={transactions} filters={filters} />
         </div>
       </div>
 

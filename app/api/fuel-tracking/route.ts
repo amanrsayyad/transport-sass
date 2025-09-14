@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     let fuelRecords = await FuelTracking.find(query)
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
-      .populate('vehicleId', 'vehicleNumber model')
+      .populate('vehicleId', 'registrationNumber vehicleType vehicleWeight vehicleStatus')
       .sort({ createdAt: -1 });
     
     // If requesting latest record for a specific vehicle
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
     const transaction = new Transaction({
       transactionId,
       type: 'FUEL',
-      description: description || `Fuel for ${vehicle.vehicleNumber} - ${fuelQuantity}L`,
+      description: description || `Fuel for ${vehicle.registrationNumber} - ${fuelQuantity}L`,
       amount: totalAmount,
       fromBankId: bankId,
       appUserId,
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
     const populatedFuelTracking = await FuelTracking.findById(fuelTracking._id)
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
-      .populate('vehicleId', 'vehicleNumber model');
+      .populate('vehicleId', 'registrationNumber vehicleType vehicleWeight vehicleStatus');
 
     return NextResponse.json(populatedFuelTracking, { status: 201 });
   } catch (error) {

@@ -12,6 +12,7 @@ import {
 } from '@/lib/redux/slices/bankSlice';
 import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { DownloadButton } from '@/components/common/DownloadButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -125,9 +126,9 @@ const BankTransfers = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR'
     }).format(amount);
   };
 
@@ -166,19 +167,23 @@ const BankTransfers = () => {
           <p className="text-gray-600">Transfer funds between bank accounts</p>
         </div>
         
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) {
-            resetForm();
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              New Transfer
-            </Button>
-          </DialogTrigger>
-          
+        <div className="flex space-x-2">
+          <DownloadButton module="transfers" data={transfers} filters={{}} />
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) {
+              resetForm();
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setIsDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                New Transfer
+              </Button>
+            </DialogTrigger>
+          </Dialog>
+        </div>
+        <Dialog>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Create Bank Transfer</DialogTitle>

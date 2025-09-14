@@ -211,15 +211,15 @@ function generateTextReport(data: ReportData, filters: FilterOptions): string {
   
   if (data.income) {
     totalIncome = data.income.reduce((sum, item) => sum + (item.amount || 0), 0);
-    report += `Total Income: $${totalIncome.toFixed(2)}\n`;
+    report += `Total Income: ₹${totalIncome.toFixed(2)}\n`;
   }
   
   if (data.expenses) {
     totalExpenses = data.expenses.reduce((sum, item) => sum + (item.amount || 0), 0);
-    report += `Total Expenses: $${totalExpenses.toFixed(2)}\n`;
+    report += `Total Expenses: ₹${totalExpenses.toFixed(2)}\n`;
   }
   
-  report += `Net Profit/Loss: $${(totalIncome - totalExpenses).toFixed(2)}\n\n`;
+  report += `Net Profit/Loss: ₹${(totalIncome - totalExpenses).toFixed(2)}\n\n`;
   
   // Add detailed sections for each module
   Object.keys(data).forEach(module => {
@@ -230,7 +230,7 @@ function generateTextReport(data: ReportData, filters: FilterOptions): string {
       data[module].forEach((item: any, index: number) => {
         report += `${index + 1}. `;
         if (item.description) report += `${item.description} - `;
-        if (item.amount) report += `$${item.amount.toFixed(2)} `;
+        if (item.amount) report += `₹${item.amount.toFixed(2)} `;
         if (item.date) report += `(${new Date(item.date).toLocaleDateString()})`;
         report += `\n`;
       });

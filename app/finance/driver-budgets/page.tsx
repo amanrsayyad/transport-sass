@@ -12,6 +12,7 @@ import { fetchBanks } from '@/lib/redux/slices/bankSlice';
 import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { fetchDrivers } from '@/lib/redux/slices/driverSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { DownloadButton } from '@/components/common/DownloadButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -143,9 +144,9 @@ const DriverBudgetManagement = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR'
     }).format(amount);
   };
 
@@ -176,19 +177,23 @@ const DriverBudgetManagement = () => {
             <p className="text-gray-600">Allocate daily budgets to drivers</p>
           </div>
         
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) {
-            resetForm();
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Allocate Budget
-            </Button>
-          </DialogTrigger>
-          
+        <div className="flex space-x-2">
+          <DownloadButton module="driver-budgets" data={driverBudgets} />
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) {
+              resetForm();
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setIsDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Allocate Budget
+              </Button>
+            </DialogTrigger>
+          </Dialog>
+        </div>
+        <Dialog>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Allocate Driver Budget</DialogTitle>

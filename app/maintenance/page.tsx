@@ -22,6 +22,7 @@ import { MaintenanceForm } from "./components/MaintenanceForm";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { toast } from "sonner";
+import { DownloadButton } from "@/components/common/DownloadButton";
 
 export default function MaintenancePage() {
   const dispatch = useDispatch<AppDispatch>();
@@ -172,12 +173,14 @@ export default function MaintenancePage() {
             Manage vehicle maintenance schedules and track service records
           </p>
         </div>
-        <Dialog open={showForm} onOpenChange={(open) => {
-          if (!open) {
-            setEditingMaintenance(null);
-          }
-          setShowForm(open);
-        }}>
+        <div className="flex items-center gap-2">
+          <DownloadButton module="maintenance" data={maintenanceRecords} />
+          <Dialog open={showForm} onOpenChange={(open) => {
+            if (!open) {
+              setEditingMaintenance(null);
+            }
+            setShowForm(open);
+          }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -205,6 +208,7 @@ export default function MaintenancePage() {
             />
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
 

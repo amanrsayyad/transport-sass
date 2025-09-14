@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FormDialog } from "@/components/common/FormDialog";
 import { ViewDialog } from "@/components/common/ViewDialog";
+import { DownloadButton } from "@/components/common/DownloadButton";
 
 import { RootState, AppDispatch } from "@/lib/redux/store";
 import {
@@ -137,23 +138,29 @@ export default function DriversPage() {
               </p>
             </div>
 
-            <FormDialog
-              trigger={
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Driver
-                </Button>
-              }
-              title="Create Driver"
-              description="Add a new driver to your team"
-              schema={driverSchema}
-              fields={driverFields}
-              defaultValues={defaultValues}
-              onSubmit={handleCreate}
-              submitLabel="Create Driver"
-              isLoading={isLoading}
-              mode="create"
-            />
+            <div className="flex gap-2">
+              <DownloadButton
+                module="drivers"
+                data={drivers}
+              />
+              <FormDialog
+                trigger={
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Driver
+                  </Button>
+                }
+                title="Create Driver"
+                description="Add a new driver to your team"
+                schema={driverSchema}
+                fields={driverFields}
+                defaultValues={defaultValues}
+                onSubmit={handleCreate}
+                submitLabel="Create Driver"
+                isLoading={isLoading}
+                mode="create"
+              />
+            </div>
           </div>
 
           {error && (

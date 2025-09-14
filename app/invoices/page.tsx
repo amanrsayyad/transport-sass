@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, FileText, Download, Edit, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { DownloadButton } from "@/components/common/DownloadButton";
 
 interface InvoiceFormData extends InvoiceCreateData {
   id?: string;
@@ -423,7 +424,9 @@ const InvoicesPage = () => {
           <h1 className="text-3xl font-bold">Invoices</h1>
           <p className="text-gray-600">Manage your transport invoices</p>
         </div>
-        <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <div className="flex items-center gap-2">
+          <DownloadButton module="invoices" data={invoices} filters={filters} />
+          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
           <SheetTrigger asChild>
             <Button onClick={() => {
               setEditingInvoice(null);
@@ -822,6 +825,7 @@ const InvoicesPage = () => {
             </form>
           </SheetContent>
         </Sheet>
+        </div>
       </div>
 
       {/* Summary Cards */}

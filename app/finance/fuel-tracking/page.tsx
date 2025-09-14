@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Fuel, TrendingUp, Calendar, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
+import { DownloadButton } from '@/components/common/DownloadButton';
 
 interface FuelTrackingFormData {
   appUserId: string;
@@ -223,9 +224,9 @@ const FuelTrackingManagement = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR'
     }).format(amount);
   };
 
@@ -274,19 +275,23 @@ const FuelTrackingManagement = () => {
             </p>
           </div>
 
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            if (!open) {
-              resetForm();
-            }
-            setIsDialogOpen(open);
-          }}>
-            <DialogTrigger asChild>
-              <Button onClick={() => setIsDialogOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Fuel Record
-              </Button>
-            </DialogTrigger>
-
+          <div className="flex gap-2">
+            <DownloadButton module="fuel-tracking" data={fuelTrackings} />
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              if (!open) {
+                resetForm();
+              }
+              setIsDialogOpen(open);
+            }}>
+              <DialogTrigger asChild>
+                <Button onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Fuel Record
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+          </div>
+          <Dialog>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>Add Fuel Tracking Record</DialogTitle>
@@ -666,10 +671,10 @@ const FuelTrackingManagement = () => {
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {fuel.vehicleId.vehicleNumber}
+                            {fuel.vehicleId.registrationNumber}
                           </div>
                           <div className="text-sm text-gray-500">
-                            {fuel.vehicleId.make} {fuel.vehicleId.model}
+                            {fuel.vehicleId.vehicleType}
                           </div>
                         </div>
                       </TableCell>

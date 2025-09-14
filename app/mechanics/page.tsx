@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { FormDialog } from "@/components/common/FormDialog";
 import { ViewDialog } from "@/components/common/ViewDialog";
+import { DownloadButton } from "@/components/common/DownloadButton";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
 
@@ -146,22 +147,25 @@ export default function MechanicsPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Mechanics</h1>
-        <FormDialog
-          trigger={
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Mechanic
-            </Button>
-          }
-          title="Add New Mechanic"
-          description="Create a new mechanic record"
-          schema={mechanicSchema}
-          fields={mechanicFields}
-          defaultValues={defaultValues}
-          onSubmit={handleCreate}
-          submitLabel="Create Mechanic"
-          isLoading={isLoading}
-        />
+        <div className="flex items-center gap-2">
+          <DownloadButton module="mechanics" data={mechanics} />
+          <FormDialog
+            trigger={
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Mechanic
+              </Button>
+            }
+            title="Add New Mechanic"
+            description="Create a new mechanic record"
+            schema={mechanicSchema}
+            fields={mechanicFields}
+            defaultValues={defaultValues}
+            onSubmit={handleCreate}
+            submitLabel="Create Mechanic"
+            isLoading={isLoading}
+          />
+        </div>
       </div>
 
       {error && (

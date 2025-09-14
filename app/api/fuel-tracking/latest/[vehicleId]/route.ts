@@ -23,7 +23,7 @@ export async function GET(
     const latestFuelRecord = await FuelTracking.findOne({ vehicleId })
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
-      .populate('vehicleId', 'vehicleNumber model')
+      .populate('vehicleId', 'registrationNumber vehicleType vehicleWeight vehicleStatus')
       .sort({ createdAt: -1 });
     
     if (!latestFuelRecord) {

@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
+import { DownloadButton } from '@/components/common/DownloadButton';
 
 interface IncomeFormData extends IncomeCreateData {}
 
@@ -185,9 +186,9 @@ const IncomeExpenseManagement = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR'
     }).format(amount);
   };
 
@@ -211,6 +212,7 @@ const IncomeExpenseManagement = () => {
           <h1 className="text-3xl font-bold">Income & Expense Management</h1>
           <p className="text-gray-600">Track your income and expense records</p>
         </div>
+        <DownloadButton module="income-expense" data={[...incomes, ...expenses]} />
       </div>
 
       {/* Summary Cards */}

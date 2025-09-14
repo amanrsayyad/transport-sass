@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FormDialog } from "@/components/common/FormDialog";
 import { ViewDialog } from "@/components/common/ViewDialog";
+import { DownloadButton } from "@/components/common/DownloadButton";
 import { ProductsManager } from "./components/ProductsManager";
 import { CustomerDialog } from "./components/CustomerDialog";
 import { CustomerDetails } from "./components/CustomerDetails";
@@ -198,20 +199,26 @@ export default function CustomersPage() {
               </p>
             </div>
 
-            <CustomerDialog
-              trigger={
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Customer
-                </Button>
-              }
-              title="Create Customer"
-              description="Add a new customer to the system"
-              defaultValues={defaultValues}
-              onSubmit={handleCreate}
-              isLoading={isLoading}
-              mode="create"
-            />
+            <div className="flex gap-2">
+              <DownloadButton
+                module="customers"
+                data={customers}
+              />
+              <CustomerDialog
+                trigger={
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Customer
+                  </Button>
+                }
+                title="Create Customer"
+                description="Add a new customer to the system"
+                defaultValues={defaultValues}
+                onSubmit={handleCreate}
+                isLoading={isLoading}
+                mode="create"
+              />
+            </div>
           </div>
 
           {error && (

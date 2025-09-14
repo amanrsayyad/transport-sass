@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FormDialog } from "@/components/common/FormDialog";
 import { ViewDialog } from "@/components/common/ViewDialog";
+import { DownloadButton } from "@/components/common/DownloadButton";
 
 import { RootState, AppDispatch } from "@/lib/redux/store";
 import {
@@ -157,23 +158,26 @@ export default function VehiclesPage() {
               </p>
             </div>
 
-            <FormDialog
-              trigger={
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Vehicle
-                </Button>
-              }
-              title="Create Vehicle"
-              description="Add a new vehicle to your fleet"
-              schema={vehicleSchema}
-              fields={vehicleFields}
-              defaultValues={defaultValues}
-              onSubmit={handleCreate}
-              submitLabel="Create Vehicle"
-              isLoading={isLoading}
-              mode="create"
-            />
+            <div className="flex gap-2">
+              <DownloadButton module="vehicles" data={vehicles} />
+              <FormDialog
+                trigger={
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Vehicle
+                  </Button>
+                }
+                title="Create Vehicle"
+                description="Add a new vehicle to your fleet"
+                schema={vehicleSchema}
+                fields={vehicleFields}
+                defaultValues={defaultValues}
+                onSubmit={handleCreate}
+                submitLabel="Create Vehicle"
+                isLoading={isLoading}
+                mode="create"
+              />
+            </div>
           </div>
 
           {error && (

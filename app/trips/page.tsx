@@ -80,6 +80,7 @@ import {
   X
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { DownloadButton } from "@/components/common/DownloadButton";
 
 const TripsPage = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -536,7 +537,13 @@ const TripsPage = () => {
               Manage vehicle trips and expenses
             </p>
           </div>
-          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+          <div className="flex gap-2">
+            <DownloadButton
+              module="trips"
+              data={trips}
+              filters={filters}
+            />
+            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
             <SheetTrigger asChild>
               <Button onClick={() => {
                 setEditingTrip(null);
@@ -1457,6 +1464,7 @@ const TripsPage = () => {
               </form>
             </SheetContent>
           </Sheet>
+          </div>
         </div>
 
         {/* Summary Cards */}
