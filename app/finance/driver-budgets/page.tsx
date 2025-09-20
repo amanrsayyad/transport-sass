@@ -13,6 +13,7 @@ import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { fetchDrivers } from '@/lib/redux/slices/driverSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DownloadButton } from '@/components/common/DownloadButton';
+import Pagination from '@/components/common/Pagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,7 +37,7 @@ interface DriverBudgetFormData {
 
 const DriverBudgetManagement = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { driverBudgets, loading, error } = useSelector((state: RootState) => state.operations);
+  const { driverBudgets, driverBudgetsPagination, loading, error } = useSelector((state: RootState) => state.operations);
   const { banks } = useSelector((state: RootState) => state.banks);
   const { appUsers } = useSelector((state: RootState) => state.appUsers);
   const { drivers } = useSelector((state: RootState) => state.drivers);
@@ -63,11 +64,19 @@ const DriverBudgetManagement = () => {
   ];
 
   useEffect(() => {
-    dispatch(fetchDriverBudgets());
+    dispatch(fetchDriverBudgets({ page: driverBudgetsPagination.page, limit: driverBudgetsPagination.limit }));
     dispatch(fetchBanks());
     dispatch(fetchAppUsers());
     dispatch(fetchDrivers());
-  }, [dispatch]);
+  }, [dispatch, driverBudgetsPagination.page, driverBudgetsPagination.limit]);
+
+  const handlePageChange = (page: number) => {
+    dispatch(fetchDriverBudgets({ page, limit: driverBudgetsPagination.limit }));
+  };
+
+  const handleLimitChange = (limit: number) => {
+    dispatch(fetchDriverBudgets({ page: 1, limit }));
+  };
 
   useEffect(() => {
     if (error) {
@@ -118,7 +127,7 @@ const DriverBudgetManagement = () => {
       setIsDialogOpen(false);
       resetForm();
       // Refresh data
-      dispatch(fetchDriverBudgets());
+      dispatch(fetchDriverBudgets({ page: driverBudgetsPagination.page, limit: driverBudgetsPagination.limit }));
       dispatch(fetchBanks());
     } catch (error: any) {
       toast.error(error || 'Failed to allocate driver budget');
@@ -464,6 +473,18 @@ const DriverBudgetManagement = () => {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {driverBudgets.length > 0 && (
+            <div className="mt-4">
+              <Pagination
+                currentPage={driverBudgetsPagination.page}
+                totalPages={driverBudgetsPagination.pages}
+                onPageChange={handlePageChange}
+                itemsPerPage={driverBudgetsPagination.limit}
+                onItemsPerPageChange={handleLimitChange}
+                totalItems={driverBudgetsPagination.total}
+              />
+            </div>
           )}
         </CardContent>
       </Card>

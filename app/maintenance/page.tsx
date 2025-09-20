@@ -13,6 +13,7 @@ import {
 import { fetchAppUsers } from "@/lib/redux/slices/appUserSlice";
 import { fetchVehicles } from "@/lib/redux/slices/vehicleSlice";
 import { fetchBanks } from "@/lib/redux/slices/bankSlice";
+import { fetchMechanics } from "@/lib/redux/slices/mechanicSlice";
 import { Plus, Edit, Trash2, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +33,7 @@ export default function MaintenancePage() {
   const { appUsers } = useSelector((state: RootState) => state.appUsers);
   const { vehicles } = useSelector((state: RootState) => state.vehicles);
   const { banks } = useSelector((state: RootState) => state.banks);
+  const { mechanics } = useSelector((state: RootState) => state.mechanics);
 
   const [showForm, setShowForm] = useState(false);
   const [editingMaintenance, setEditingMaintenance] = useState<Maintenance | null>(null);
@@ -48,6 +50,7 @@ export default function MaintenancePage() {
   useEffect(() => {
     dispatch(fetchMaintenanceRecords());
     dispatch(fetchAppUsers());
+    dispatch(fetchMechanics());
     dispatch(fetchVehicles());
     dispatch(fetchBanks());
   }, [dispatch]);
@@ -197,6 +200,7 @@ export default function MaintenancePage() {
               appUsers={appUsers}
               vehicles={vehicles}
               banks={banks}
+              mechanics={mechanics}
               getUserBanks={getUserBanks}
               getActiveBanks={getActiveBanks}
               onSubmit={handleCreateMaintenance}
@@ -248,6 +252,7 @@ export default function MaintenancePage() {
                     appUsers={appUsers}
                     vehicles={vehicles}
                     banks={banks}
+                    mechanics={mechanics}
                     getUserBanks={getUserBanks}
                     getActiveBanks={getActiveBanks}
                     onSubmit={handleCreateMaintenance}

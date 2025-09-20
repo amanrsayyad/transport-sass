@@ -69,6 +69,18 @@ interface FinanceState {
   currentExpense: Expense | null;
   loading: boolean;
   error: string | null;
+  incomesPagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+  expensesPagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
 }
 
 const initialState: FinanceState = {
@@ -78,14 +90,30 @@ const initialState: FinanceState = {
   currentExpense: null,
   loading: false,
   error: null,
+  incomesPagination: {
+    page: 1,
+    limit: 10,
+    total: 0,
+    pages: 0
+  },
+  expensesPagination: {
+    page: 1,
+    limit: 10,
+    total: 0,
+    pages: 0
+  }
 };
 
 // Async thunks for Income
 export const fetchIncomes = createAsyncThunk(
   'finance/fetchIncomes',
-  async (_, { rejectWithValue }) => {
+  async (params: { page?: number; limit?: number } = {}, { rejectWithValue }) => {
     try {
-      const response = await fetch('/api/income');
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      
+      const response = await fetch(`/api/income?${queryParams}`);
       if (!response.ok) {
         const error = await response.json();
         return rejectWithValue(error.error || 'Failed to fetch incomes');
@@ -124,9 +152,13 @@ export const createIncome = createAsyncThunk(
 // Async thunks for Expense
 export const fetchExpenses = createAsyncThunk(
   'finance/fetchExpenses',
-  async (_, { rejectWithValue }) => {
+  async (params: { page?: number; limit?: number } = {}, { rejectWithValue }) => {
     try {
-      const response = await fetch('/api/expenses');
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      
+      const response = await fetch(`/api/expenses?${queryParams}`);
       if (!response.ok) {
         const error = await response.json();
         return rejectWithValue(error.error || 'Failed to fetch expenses');
@@ -186,7 +218,17 @@ const financeSlice = createSlice({
       })
       .addCase(fetchIncomes.fulfilled, (state, action) => {
         state.loading = false;
-        state.incomes = action.payload;
+        if (action.payload.data) {
+          state.incomes = action.payload.data;
+          state.incomesPagination = {
+            page: action.payload.page || 1,
+            limit: action.payload.limit || 10,
+            total: action.payload.total || 0,
+            pages: action.payload.pages || 0
+          };
+        } else {
+          state.incomes = action.payload;
+        }
       })
       .addCase(fetchIncomes.rejected, (state, action) => {
         state.loading = false;
@@ -214,7 +256,17 @@ const financeSlice = createSlice({
       })
       .addCase(fetchExpenses.fulfilled, (state, action) => {
         state.loading = false;
-        state.expenses = action.payload;
+        if (action.payload.data) {
+          state.expenses = action.payload.data;
+          state.expensesPagination = {
+            page: action.payload.page || 1,
+            limit: action.payload.limit || 10,
+            total: action.payload.total || 0,
+            pages: action.payload.pages || 0
+          };
+        } else {
+          state.expenses = action.payload;
+        }
       })
       .addCase(fetchExpenses.rejected, (state, action) => {
         state.loading = false;

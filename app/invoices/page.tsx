@@ -20,6 +20,7 @@ import {
 } from "@/lib/redux/slices/customerSlice";
 import { fetchVehicles } from "@/lib/redux/slices/vehicleSlice";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import Pagination from "@/components/common/Pagination";
 import { InvoicePDF } from "@/components/invoices/InvoicePDF";
 import { generateInvoicePDF } from "@/lib/utils/pdfGenerator";
 import { Button } from "@/components/ui/button";
@@ -113,10 +114,18 @@ const InvoicesPage = () => {
   });
 
   useEffect(() => {
-    dispatch(fetchInvoices({}));
+    dispatch(fetchInvoices({ page: pagination.page, limit: pagination.limit }));
     dispatch(fetchCustomers());
     dispatch(fetchVehicles());
-  }, [dispatch]);
+  }, [dispatch, pagination.page, pagination.limit]);
+
+  const handlePageChange = (page: number) => {
+    dispatch(fetchInvoices({ page, limit: pagination.limit }));
+  };
+
+  const handleLimitChange = (limit: number) => {
+    dispatch(fetchInvoices({ page: 1, limit }));
+  };
 
   useEffect(() => {
     if (error) {
@@ -272,7 +281,7 @@ const InvoicesPage = () => {
       }
 
       handleSheetClose();
-      dispatch(fetchInvoices({}));
+      dispatch(fetchInvoices({ page: pagination.page, limit: pagination.limit }));
     } catch (error: any) {
       toast.error(error.message || "Failed to save invoice");
     }
@@ -1022,6 +1031,16 @@ const InvoicesPage = () => {
                   ))}
                 </TableBody>
               </Table>
+              {invoices.length > 0 && (
+                <Pagination
+                  currentPage={pagination.page}
+                  totalPages={pagination.pages}
+                  totalItems={pagination.total}
+                  itemsPerPage={pagination.limit}
+                  onPageChange={handlePageChange}
+                  onItemsPerPageChange={handleLimitChange}
+                />
+              )}
             </div>
           )}
         </CardContent>

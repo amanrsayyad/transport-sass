@@ -11,6 +11,8 @@ import {
 import { Bell, AlertTriangle, X, Check, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -25,6 +27,8 @@ export function MaintenanceNotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [processingNotifications, setProcessingNotifications] = useState<string[]>([]);
   const [dismissedNotifications, setDismissedNotifications] = useState<string[]>([]);
+  const [showAmountInput, setShowAmountInput] = useState<string | null>(null);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     // Fetch notifications on component mount
@@ -38,8 +42,28 @@ export function MaintenanceNotificationBell() {
     return () => clearInterval(interval);
   }, [dispatch]);
 
+  const handleShowAmountInput = (notificationId: string) => {
+    setShowAmountInput(notificationId);
+  };
+
+  const handleAmountChange = (notificationId: string, value: string) => {
+    setAmounts(prev => ({ ...prev, [notificationId]: value }));
+  };
+
+  const handleCancelAmountInput = (notificationId: string) => {
+    setShowAmountInput(null);
+    setAmounts(prev => ({ ...prev, [notificationId]: '' }));
+  };
+
   const handleAcceptNotification = async (maintenanceId: string) => {
     try {
+      // Validate amount input
+      const amount = amounts[maintenanceId];
+      if (!amount || parseFloat(amount) <= 0) {
+        alert('Please enter a valid amount greater than 0');
+        return;
+      }
+
       setProcessingNotifications(prev => [...prev, maintenanceId]);
       
       // Call API to accept maintenance and handle all related operations
@@ -48,6 +72,7 @@ export function MaintenanceNotificationBell() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ categoryAmount: parseFloat(amount) }),
       });
 
       if (response.ok) {
@@ -56,6 +81,10 @@ export function MaintenanceNotificationBell() {
         
         // Update Redux state
         await dispatch(acceptMaintenanceNotification(maintenanceId)).unwrap();
+        
+        // Clear amount input and hide input field
+        setAmounts(prev => ({ ...prev, [maintenanceId]: '' }));
+        setShowAmountInput(null);
         
         // Show success message
         alert(`Maintenance completed successfully! 
@@ -196,9 +225,11 @@ export function MaintenanceNotificationBell() {
                           <div>
                             KM: {notification.totalKm.toLocaleString()} / {notification.targetKm.toLocaleString()}
                           </div>
-                          <div>
-                            Amount: ₹{notification.categoryAmount.toLocaleString()}
-                          </div>
+                          {notification.categoryAmount && (
+                            <div>
+                              Amount: ₹{notification.categoryAmount.toLocaleString()}
+                            </div>
+                          )}
                         </div>
                         
                         <div className="w-full bg-red-200 rounded-full h-1.5">
@@ -210,36 +241,77 @@ export function MaintenanceNotificationBell() {
                           ></div>
                         </div>
                         
-                        <div className="flex space-x-2 pt-2">
-                          <Button
-                            size="sm"
-                            className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs h-7"
-                            onClick={() => handleAcceptNotification(notification._id)}
-                            disabled={isProcessing}
-                          >
-                            {isProcessing ? (
-                              <div className="flex items-center">
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
-                                Processing...
-                              </div>
-                            ) : (
-                              <>
-                                <Check className="h-3 w-3 mr-1" />
-                                Accept
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 border-red-300 text-red-700 hover:bg-red-100 text-xs h-7"
-                            onClick={() => handleDeclineNotification(notification._id)}
-                            disabled={isProcessing}
-                          >
-                            <Clock className="h-3 w-3 mr-1" />
-                            Later
-                          </Button>
-                        </div>
+                        {showAmountInput === notification._id ? (
+                          <div className="space-y-2 pt-2">
+                            <div className="space-y-1">
+                              <Label htmlFor={`amount-${notification._id}`} className="text-xs font-medium text-red-800">
+                                Enter Amount (₹) *
+                              </Label>
+                              <Input
+                                id={`amount-${notification._id}`}
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="Enter amount"
+                                value={amounts[notification._id] || ''}
+                                onChange={(e) => handleAmountChange(notification._id, e.target.value)}
+                                className="border-red-300 focus:border-red-500 text-xs h-7"
+                              />
+                            </div>
+                            <div className="flex space-x-2">
+                              <Button
+                                size="sm"
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs h-7"
+                                onClick={() => handleAcceptNotification(notification._id)}
+                                disabled={isProcessing || !amounts[notification._id] || parseFloat(amounts[notification._id] || '0') <= 0}
+                              >
+                                {isProcessing ? (
+                                  <div className="flex items-center">
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                    Processing...
+                                  </div>
+                                ) : (
+                                  <>
+                                    <Check className="h-3 w-3 mr-1" />
+                                    Confirm
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-100 text-xs h-7"
+                                onClick={() => handleCancelAmountInput(notification._id)}
+                                disabled={isProcessing}
+                              >
+                                <X className="h-3 w-3 mr-1" />
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex space-x-2 pt-2">
+                            <Button
+                              size="sm"
+                              className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs h-7"
+                              onClick={() => handleShowAmountInput(notification._id)}
+                              disabled={isProcessing}
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Accept
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1 border-red-300 text-red-700 hover:bg-red-100 text-xs h-7"
+                              onClick={() => handleDeclineNotification(notification._id)}
+                              disabled={isProcessing}
+                            >
+                              <Clock className="h-3 w-3 mr-1" />
+                              Later
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

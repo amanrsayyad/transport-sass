@@ -6,7 +6,7 @@ import Transaction from '@/models/Transaction';
 import AppUser from '@/models/AppUser';
 import Vehicle from '@/models/Vehicle';
 
-// GET - Fetch fuel tracking records with optional filtering
+// GET - Fetch fuel tracking records with optional filtering and pagination
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
@@ -14,28 +14,53 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const vehicleId = searchParams.get('vehicleId');
     const latest = searchParams.get('latest');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
     
     let query = {};
     if (vehicleId) {
       query = { vehicleId };
     }
     
-    let fuelRecords = await FuelTracking.find(query)
+    // If requesting latest record for a specific vehicle
+    if (vehicleId && latest === 'true') {
+      const fuelRecords = await FuelTracking.find(query)
+        .populate('appUserId', 'name email')
+        .populate('bankId', 'bankName accountNumber')
+        .populate('vehicleId', 'registrationNumber vehicleType vehicleWeight vehicleStatus')
+        .sort({ createdAt: -1 })
+        .limit(1);
+        
+      if (fuelRecords.length > 0) {
+        const latestRecord = fuelRecords[0];
+        return NextResponse.json({
+          ...latestRecord.toObject(),
+          mileage: latestRecord.truckAverage
+        });
+      }
+    }
+    
+    // Get total count for pagination
+    const total = await FuelTracking.countDocuments(query);
+    const pages = Math.ceil(total / limit);
+    
+    // Get paginated results
+    const fuelRecords = await FuelTracking.find(query)
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
       .populate('vehicleId', 'registrationNumber vehicleType vehicleWeight vehicleStatus')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
     
-    // If requesting latest record for a specific vehicle
-    if (vehicleId && latest === 'true' && fuelRecords.length > 0) {
-      const latestRecord = fuelRecords[0];
-      return NextResponse.json({
-        ...latestRecord.toObject(),
-        mileage: latestRecord.truckAverage
-      });
-    }
-    
-    return NextResponse.json(fuelRecords);
+    return NextResponse.json({
+      data: fuelRecords,
+      page,
+      limit,
+      total,
+      pages
+    });
   } catch (error) {
     console.error('Error fetching fuel tracking records:', error);
     return NextResponse.json(

@@ -6,39 +6,64 @@ import Transaction from '@/models/Transaction';
 import AppUser from '@/models/AppUser';
 import Driver from '@/models/Driver';
 
-// GET - Fetch driver budget records with optional filtering
+// GET - Fetch driver budget records with optional filtering and pagination
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
     const { searchParams } = new URL(request.url);
     const driverId = searchParams.get('driverId');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
     
     let query = {};
     if (driverId) {
       query = { driverId };
     }
     
+    // If filtering by driverId, return the latest budget with calculated remaining budget
+    if (driverId) {
+      const budgets = await DriverBudget.find(query)
+        .populate('appUserId', 'name email')
+        .populate('bankId', 'bankName accountNumber')
+        .populate('driverId', 'name licenseNumber')
+        .sort({ createdAt: -1 })
+        .limit(1);
+        
+      if (budgets.length > 0) {
+        const latestBudget = budgets[0];
+        // Calculate remaining budget based on expenses (this would need to be implemented based on your business logic)
+        const remainingBudget = latestBudget.dailyBudgetAmount; // Simplified for now
+        
+        return NextResponse.json({
+          ...latestBudget.toObject(),
+          budgetAmount: latestBudget.dailyBudgetAmount,
+          remainingBudget
+        });
+      }
+    }
+    
+    // Get total count for pagination
+    const total = await DriverBudget.countDocuments(query);
+    const pages = Math.ceil(total / limit);
+    
+    // Get paginated results
     const budgets = await DriverBudget.find(query)
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
       .populate('driverId', 'name licenseNumber')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
     
-    // If filtering by driverId, return the latest budget with calculated remaining budget
-    if (driverId && budgets.length > 0) {
-      const latestBudget = budgets[0];
-      // Calculate remaining budget based on expenses (this would need to be implemented based on your business logic)
-      const remainingBudget = latestBudget.dailyBudgetAmount; // Simplified for now
-      
-      return NextResponse.json({
-        ...latestBudget.toObject(),
-        budgetAmount: latestBudget.dailyBudgetAmount,
-        remainingBudget
-      });
-    }
-    
-    return NextResponse.json(budgets);
+    return NextResponse.json({
+      data: budgets,
+      page,
+      limit,
+      total,
+      pages
+    });
   } catch (error) {
     console.error('Error fetching driver budgets:', error);
     return NextResponse.json(

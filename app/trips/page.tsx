@@ -20,6 +20,7 @@ import { fetchCustomers } from "@/lib/redux/slices/customerSlice";
 import { fetchBanks } from "@/lib/redux/slices/bankSlice";
 import { fetchAppUsers } from "@/lib/redux/slices/appUserSlice";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import Pagination from "@/components/common/Pagination";
 import {
   Card,
   CardContent,
@@ -146,6 +147,14 @@ const TripsPage = () => {
     dispatch(fetchBanks());
     dispatch(fetchAppUsers());
   }, [dispatch, filters]);
+
+  const handlePageChange = (page: number) => {
+    dispatch(fetchTrips({ ...filters, page, limit: pagination.limit }));
+  };
+
+  const handleLimitChange = (limit: number) => {
+    dispatch(fetchTrips({ ...filters, page: 1, limit }));
+  };
 
   useEffect(() => {
     if (error) {
@@ -1688,6 +1697,16 @@ const TripsPage = () => {
                 ))}
               </TableBody>
             </Table>
+            {trips.length > 0 && (
+              <Pagination
+                currentPage={pagination.page}
+                totalPages={pagination.pages}
+                totalItems={pagination.total}
+                itemsPerPage={pagination.limit}
+                onPageChange={handlePageChange}
+                onItemsPerPageChange={handleLimitChange}
+              />
+            )}
           </CardContent>
         </Card>
 

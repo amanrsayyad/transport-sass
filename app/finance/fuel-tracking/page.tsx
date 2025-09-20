@@ -13,6 +13,7 @@ import { fetchBanks } from '@/lib/redux/slices/bankSlice';
 import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { fetchVehicles } from '@/lib/redux/slices/vehicleSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import Pagination from '@/components/common/Pagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,7 +41,7 @@ interface FuelTrackingFormData {
 
 const FuelTrackingManagement = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { fuelTrackings, loading, error } = useSelector((state: RootState) => state.operations);
+  const { fuelTrackings, fuelTrackingsPagination, loading, error } = useSelector((state: RootState) => state.operations);
   const { banks } = useSelector((state: RootState) => state.banks);
   const { appUsers } = useSelector((state: RootState) => state.appUsers);
   const { vehicles } = useSelector((state: RootState) => state.vehicles);
@@ -67,11 +68,19 @@ const FuelTrackingManagement = () => {
   const paymentTypes = ['Cash', 'UPI', 'Net Banking', 'Credit Card', 'Debit Card', 'Cheque'];
 
   useEffect(() => {
-    dispatch(fetchFuelTrackings());
+    dispatch(fetchFuelTrackings({ page: fuelTrackingsPagination.page, limit: fuelTrackingsPagination.limit }));
     dispatch(fetchBanks());
     dispatch(fetchAppUsers());
     dispatch(fetchVehicles());
-  }, [dispatch]);
+  }, [dispatch, fuelTrackingsPagination.page, fuelTrackingsPagination.limit]);
+
+  const handlePageChange = (page: number) => {
+    dispatch(fetchFuelTrackings({ page, limit: fuelTrackingsPagination.limit }));
+  };
+
+  const handleLimitChange = (limit: number) => {
+    dispatch(fetchFuelTrackings({ page: 1, limit }));
+  };
 
   useEffect(() => {
     if (error) {
@@ -192,7 +201,7 @@ const FuelTrackingManagement = () => {
       setIsDialogOpen(false);
       resetForm();
       // Refresh data
-      dispatch(fetchFuelTrackings());
+      dispatch(fetchFuelTrackings({ page: fuelTrackingsPagination.page, limit: fuelTrackingsPagination.limit }));
       dispatch(fetchBanks());
     } catch (error: any) {
       toast.error(error || 'Failed to create fuel tracking record');
@@ -715,6 +724,18 @@ const FuelTrackingManagement = () => {
                   ))}
                 </TableBody>
               </Table>
+            )}
+            {fuelTrackings.length > 0 && (
+              <div className="mt-4">
+                <Pagination
+                  currentPage={fuelTrackingsPagination.page}
+                  totalPages={fuelTrackingsPagination.pages}
+                  onPageChange={handlePageChange}
+                  itemsPerPage={fuelTrackingsPagination.limit}
+                  onItemsPerPageChange={handleLimitChange}
+                  totalItems={fuelTrackingsPagination.total}
+                />
+              </div>
             )}
           </CardContent>
         </Card>

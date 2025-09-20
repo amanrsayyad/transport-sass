@@ -5,17 +5,35 @@ import Bank from '@/models/Bank';
 import Transaction from '@/models/Transaction';
 import AppUser from '@/models/AppUser';
 
-// GET - Fetch all income records
-export async function GET() {
+// GET - Fetch all income records with pagination
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
+    
+    // Get total count for pagination
+    const total = await Income.countDocuments();
+    const pages = Math.ceil(total / limit);
+    
+    // Get paginated results
     const incomes = await Income.find()
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
     
-    return NextResponse.json(incomes);
+    return NextResponse.json({
+      data: incomes,
+      page,
+      limit,
+      total,
+      pages
+    });
   } catch (error) {
     console.error('Error fetching incomes:', error);
     return NextResponse.json(

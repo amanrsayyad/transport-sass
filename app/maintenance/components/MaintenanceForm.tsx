@@ -23,8 +23,9 @@ const maintenanceSchema = z.object({
   appUserId: z.string().min(1, "App User is required"),
   bankId: z.string().min(1, "Bank is required"),
   vehicleId: z.string().min(1, "Vehicle is required"),
+  mechanicId: z.string().optional(),
   category: z.string().min(1, "Category is required"),
-  categoryAmount: z.number().min(1, "Amount must be greater than 0"),
+  categoryAmount: z.number().min(1, "Category amount is required"),
   targetKm: z.number().min(1, "Target KM must be greater than 0"),
   startKm: z.number().min(0, "Start KM must be 0 or greater"),
   endKm: z.number().min(0, "End KM must be 0 or greater"),
@@ -37,6 +38,7 @@ interface MaintenanceFormProps {
   appUsers: any[];
   vehicles: any[];
   banks: any[];
+  mechanics: any[];
   getUserBanks: (userId: string) => any[];
   getActiveBanks: () => any[];
   onSubmit: (data: any) => Promise<any>;
@@ -62,6 +64,7 @@ export function MaintenanceForm({
   appUsers,
   vehicles,
   banks,
+  mechanics,
   getUserBanks,
   getActiveBanks,
   onSubmit,
@@ -146,7 +149,7 @@ export function MaintenanceForm({
       const formData = watch();
       
       // Only trigger if we have all required data
-      if (!formData.category || !formData.categoryAmount || !formData.bankId) {
+      if (!formData.category || !formData.bankId) {
         return; // Don't trigger notification if form is incomplete
       }
       
@@ -161,7 +164,6 @@ export function MaintenanceForm({
           endKm,
           targetKm,
           category: formData.category,
-          categoryAmount: formData.categoryAmount,
           appUserId: selectedAppUser,
           bankId: formData.bankId,
         }),
@@ -229,7 +231,7 @@ export function MaintenanceForm({
     console.log("Form is valid:", Object.keys(errors).length === 0);
 
     // Check if all required fields are present
-    const requiredFields = ['appUserId', 'bankId', 'vehicleId', 'category', 'categoryAmount', 'targetKm', 'startKm', 'endKm', 'createdBy'];
+    const requiredFields = ['appUserId', 'bankId', 'vehicleId', 'category', 'targetKm', 'startKm', 'endKm', 'createdBy'];
     const missingFields = requiredFields.filter(field => !data[field as keyof MaintenanceFormData]);
     if (missingFields.length > 0) {
       console.error("Missing required fields:", missingFields);
@@ -301,6 +303,7 @@ export function MaintenanceForm({
       <input type="hidden" {...register("bankId")} />
       <input type="hidden" {...register("vehicleId")} />
       <input type="hidden" {...register("category")} />
+      <input type="hidden" {...register("categoryAmount", { valueAsNumber: true })} />
       <input type="hidden" {...register("createdBy")} />
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -398,20 +401,46 @@ export function MaintenanceForm({
 
         {/* Category Amount */}
         <div className="space-y-2">
-          <Label htmlFor="categoryAmount">Amount (₹) *</Label>
+          <Label htmlFor="categoryAmount">Category Amount *</Label>
           <Input
             id="categoryAmount"
             type="number"
-            step="0.01"
             {...register("categoryAmount", { valueAsNumber: true })}
-            placeholder="Enter amount"
+            placeholder="Enter amount for maintenance"
+            min="1"
+            step="0.01"
           />
           {errors.categoryAmount && (
-            <p className="text-sm text-red-600">
-              {errors.categoryAmount.message}
-            </p>
+            <p className="text-sm text-red-600">{errors.categoryAmount.message}</p>
           )}
         </div>
+
+        {/* Mechanic Selection */}
+        <div className="space-y-2">
+          <Label htmlFor="mechanicId">Mechanic (Optional)</Label>
+          <Select 
+            onValueChange={(value) => {
+              setValue("mechanicId", value, { shouldValidate: true });
+            }}
+            value={watch("mechanicId")}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select Mechanic" />
+            </SelectTrigger>
+            <SelectContent>
+              {mechanics.filter(mechanic => mechanic.status === 'active').map((mechanic) => (
+                <SelectItem key={mechanic._id} value={mechanic._id}>
+                  {mechanic.name} - {mechanic.phone}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {errors.mechanicId && (
+            <p className="text-sm text-red-600">{errors.mechanicId.message}</p>
+          )}
+        </div>
+
+
 
         {/* Target KM */}
         <div className="space-y-2">

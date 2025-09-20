@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
       .populate('appUserId', 'name')
       .populate('vehicleId', 'vehicleNumber')
       .populate('bankId', 'bankName')
+      .populate('mechanicId', 'name phone')
       .sort({ createdAt: -1 });
     
     return NextResponse.json(maintenanceRecords);
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('Received maintenance data:', body);
     
-    const { appUserId, bankId, vehicleId, category, categoryAmount, targetKm, startKm, endKm, bankName, vehicleNumber, createdBy } = body;
+    const { appUserId, bankId, vehicleId, mechanicId, category, categoryAmount, targetKm, startKm, endKm, bankName, vehicleNumber, createdBy } = body;
     
     // Validate required fields
     if (!appUserId || !bankId || !vehicleId || !category || !categoryAmount || !targetKm) {
@@ -101,6 +102,7 @@ export async function POST(request: NextRequest) {
       bankName: bankName || bank.bankName,
       vehicleId,
       vehicleNumber: vehicleNumber || '',
+      mechanicId: mechanicId && mechanicId !== 'none' ? mechanicId : undefined,
       category,
       categoryAmount,
       startKm: calculatedStartKm,
@@ -122,7 +124,12 @@ export async function POST(request: NextRequest) {
     const populatedMaintenance = await Maintenance.findById(maintenance._id)
       .populate('appUserId', 'name')
       .populate('vehicleId', 'vehicleNumber')
-      .populate('bankId', 'bankName');
+      .populate('bankId', 'bankName')
+      .populate({
+        path: 'mechanicId',
+        select: 'name phone',
+        match: { _id: { $exists: true } }
+      });
     
     return NextResponse.json(populatedMaintenance, { status: 201 });
   } catch (error) {

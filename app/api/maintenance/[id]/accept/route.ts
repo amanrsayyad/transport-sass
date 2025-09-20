@@ -16,6 +16,18 @@ export async function POST(
 
     const resolvedParams = await params;
     const maintenanceId = resolvedParams.id;
+    
+    // Parse request body to get the amount
+    const body = await request.json();
+    const { categoryAmount } = body;
+    
+    // Validate amount
+    if (!categoryAmount || categoryAmount <= 0) {
+      return NextResponse.json(
+        { message: "Valid amount is required" },
+        { status: 400 }
+      );
+    }
 
     // Find the maintenance record
     const maintenance = await Maintenance.findById(maintenanceId)
@@ -47,7 +59,7 @@ export async function POST(
     }
 
     // Check if bank has sufficient balance
-    if (bank.balance < maintenance.categoryAmount) {
+    if (bank.balance < categoryAmount) {
       return NextResponse.json(
         { message: "Insufficient bank balance for maintenance expense" },
         { status: 400 }
@@ -59,19 +71,20 @@ export async function POST(
     
     try {
       await session.withTransaction(async () => {
-        // 1. Update maintenance record status to Completed
+        // 1. Update maintenance record status to Completed and set the amount
         await Maintenance.findByIdAndUpdate(
           maintenanceId,
           {
             status: 'Completed',
             completedAt: new Date(),
-            notificationStatus: 'Accepted'
+            notificationStatus: 'Accepted',
+            categoryAmount: categoryAmount
           },
           { session }
         );
 
         // 2. Update bank balance
-        const newBalance = bank.balance - maintenance.categoryAmount;
+        const newBalance = bank.balance - categoryAmount;
         await Bank.findByIdAndUpdate(
           maintenance.bankId,
           { balance: newBalance },
@@ -84,7 +97,7 @@ export async function POST(
           bankId: maintenance.bankId,
           bankName: maintenance.bankName,
           category: `Maintenance - ${maintenance.category}`,
-          amount: maintenance.categoryAmount,
+          amount: categoryAmount,
           description: `Vehicle maintenance for ${maintenance.vehicleNumber} - ${maintenance.category}`,
           date: new Date(),
           createdBy: maintenance.createdBy,
@@ -100,7 +113,7 @@ export async function POST(
           appUserId: maintenance.appUserId._id,
           fromBankId: maintenance.bankId,
           type: 'EXPENSE',
-          amount: maintenance.categoryAmount,
+          amount: categoryAmount,
           description: `Maintenance expense - ${maintenance.vehicleNumber} ${maintenance.category}`,
           category: 'Maintenance',
           date: new Date(),

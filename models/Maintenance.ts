@@ -6,8 +6,9 @@ export interface IMaintenance extends Document {
   bankName: string;
   vehicleId: mongoose.Types.ObjectId;
   vehicleNumber: string;
+  mechanicId?: mongoose.Types.ObjectId;
   category: string;
-  categoryAmount: number;
+  categoryAmount?: number;
   startKm: number;
   targetKm: number;
   endKm: number;
@@ -35,8 +36,9 @@ const MaintenanceSchema = new Schema<IMaintenance>({
   bankName: { type: String, required: true },
   vehicleId: { type: Schema.Types.ObjectId, ref: 'Vehicle', required: true },
   vehicleNumber: { type: String, required: true },
+  mechanicId: { type: Schema.Types.ObjectId, ref: 'Mechanic', required: false },
   category: { type: String, required: true },
-  categoryAmount: { type: Number, required: true },
+  categoryAmount: { type: Number, required: false },
   startKm: { type: Number, required: true },
   targetKm: { type: Number, required: true },
   endKm: { type: Number, default: 0 },

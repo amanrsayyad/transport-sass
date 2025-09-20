@@ -90,6 +90,18 @@ interface OperationsState {
   currentFuelTracking: FuelTracking | null;
   loading: boolean;
   error: string | null;
+  driverBudgetsPagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+  fuelTrackingsPagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
 }
 
 const initialState: OperationsState = {
@@ -99,14 +111,30 @@ const initialState: OperationsState = {
   currentFuelTracking: null,
   loading: false,
   error: null,
+  driverBudgetsPagination: {
+    page: 1,
+    limit: 10,
+    total: 0,
+    pages: 0
+  },
+  fuelTrackingsPagination: {
+    page: 1,
+    limit: 10,
+    total: 0,
+    pages: 0
+  }
 };
 
 // Async thunks for Driver Budget
 export const fetchDriverBudgets = createAsyncThunk(
   'operations/fetchDriverBudgets',
-  async (_, { rejectWithValue }) => {
+  async (params: { page?: number; limit?: number } = {}, { rejectWithValue }) => {
     try {
-      const response = await fetch('/api/driver-budgets');
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      
+      const response = await fetch(`/api/driver-budget?${queryParams}`);
       if (!response.ok) {
         const error = await response.json();
         return rejectWithValue(error.error || 'Failed to fetch driver budgets');
@@ -145,9 +173,13 @@ export const createDriverBudget = createAsyncThunk(
 // Async thunks for Fuel Tracking
 export const fetchFuelTrackings = createAsyncThunk(
   'operations/fetchFuelTrackings',
-  async (_, { rejectWithValue }) => {
+  async (params: { page?: number; limit?: number } = {}, { rejectWithValue }) => {
     try {
-      const response = await fetch('/api/fuel-tracking');
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      
+      const response = await fetch(`/api/fuel-tracking?${queryParams}`);
       if (!response.ok) {
         const error = await response.json();
         return rejectWithValue(error.error || 'Failed to fetch fuel trackings');
@@ -206,9 +238,19 @@ const operationsSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchDriverBudgets.fulfilled, (state, action) => {
-        state.loading = false;
+      state.loading = false;
+      if (action.payload.data) {
+        state.driverBudgets = action.payload.data;
+        state.driverBudgetsPagination = {
+          page: action.payload.page || 1,
+          limit: action.payload.limit || 10,
+          total: action.payload.total || 0,
+          pages: action.payload.pages || 0
+        };
+      } else {
         state.driverBudgets = action.payload;
-      })
+      }
+    })
       .addCase(fetchDriverBudgets.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
@@ -234,9 +276,19 @@ const operationsSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchFuelTrackings.fulfilled, (state, action) => {
-        state.loading = false;
+      state.loading = false;
+      if (action.payload.data) {
+        state.fuelTrackings = action.payload.data;
+        state.fuelTrackingsPagination = {
+          page: action.payload.page || 1,
+          limit: action.payload.limit || 10,
+          total: action.payload.total || 0,
+          pages: action.payload.pages || 0
+        };
+      } else {
         state.fuelTrackings = action.payload;
-      })
+      }
+    })
       .addCase(fetchFuelTrackings.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;

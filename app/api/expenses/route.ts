@@ -5,17 +5,35 @@ import Bank from '@/models/Bank';
 import Transaction from '@/models/Transaction';
 import AppUser from '@/models/AppUser';
 
-// GET - Fetch all expense records
-export async function GET() {
+// GET - Fetch all expense records with pagination
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
     
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
+    
+    // Get total count for pagination
+    const total = await Expense.countDocuments();
+    const pages = Math.ceil(total / limit);
+    
+    // Get paginated results
     const expenses = await Expense.find()
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
     
-    return NextResponse.json(expenses);
+    return NextResponse.json({
+      data: expenses,
+      page,
+      limit,
+      total,
+      pages
+    });
   } catch (error) {
     console.error('Error fetching expenses:', error);
     return NextResponse.json(

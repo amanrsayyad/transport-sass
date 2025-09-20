@@ -15,6 +15,7 @@ import {
 import { fetchBanks } from '@/lib/redux/slices/bankSlice';
 import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import Pagination from '@/components/common/Pagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,7 +35,7 @@ interface ExpenseFormData extends ExpenseCreateData {}
 
 const IncomeExpenseManagement = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { incomes, expenses, loading, error } = useSelector((state: RootState) => state.finance);
+  const { incomes, expenses, loading, error, incomesPagination, expensesPagination } = useSelector((state: RootState) => state.finance);
   const { banks } = useSelector((state: RootState) => state.banks);
   const { appUsers } = useSelector((state: RootState) => state.appUsers);
   
@@ -84,11 +85,27 @@ const IncomeExpenseManagement = () => {
   ];
 
   useEffect(() => {
-    dispatch(fetchIncomes());
-    dispatch(fetchExpenses());
+    dispatch(fetchIncomes({ page: incomesPagination.page, limit: incomesPagination.limit }));
+    dispatch(fetchExpenses({ page: expensesPagination.page, limit: expensesPagination.limit }));
     dispatch(fetchBanks());
     dispatch(fetchAppUsers());
-  }, [dispatch]);
+  }, [dispatch, incomesPagination.page, incomesPagination.limit, expensesPagination.page, expensesPagination.limit]);
+
+  const handleIncomePageChange = (page: number) => {
+    dispatch(fetchIncomes({ page, limit: incomesPagination.limit }));
+  };
+
+  const handleIncomeLimitChange = (limit: number) => {
+    dispatch(fetchIncomes({ page: 1, limit }));
+  };
+
+  const handleExpensePageChange = (page: number) => {
+    dispatch(fetchExpenses({ page, limit: expensesPagination.limit }));
+  };
+
+  const handleExpenseLimitChange = (limit: number) => {
+    dispatch(fetchExpenses({ page: 1, limit }));
+  };
 
   useEffect(() => {
     if (error) {
@@ -135,7 +152,7 @@ const IncomeExpenseManagement = () => {
       setIsIncomeDialogOpen(false);
       resetIncomeForm();
       // Refresh data
-      dispatch(fetchIncomes());
+      dispatch(fetchIncomes({ page: incomesPagination.page, limit: incomesPagination.limit }));
       dispatch(fetchBanks());
     } catch (error: any) {
       toast.error(error || 'Failed to create income record');
@@ -156,7 +173,7 @@ const IncomeExpenseManagement = () => {
       setIsExpenseDialogOpen(false);
       resetExpenseForm();
       // Refresh data
-      dispatch(fetchExpenses());
+      dispatch(fetchExpenses({ page: expensesPagination.page, limit: expensesPagination.limit }));
       dispatch(fetchBanks());
     } catch (error: any) {
       toast.error(error || 'Failed to create expense record');
@@ -563,47 +580,59 @@ const IncomeExpenseManagement = () => {
                   No income records found. Create your first income record.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>App User</TableHead>
-                      <TableHead>Bank Account</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {incomes.map((income) => (
-                      <TableRow key={income._id}>
-                        <TableCell>
-                          <div className="font-medium">{income.appUserId.name}</div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{income.bankId.bankName}</div>
-                            <div className="text-sm text-gray-500">{income.bankId.accountNumber}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{income.category}</TableCell>
-                        <TableCell>
-                          <span className="font-medium text-green-600">
-                            {formatCurrency(income.amount)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm">
-                            {income.description || 'No description'}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(income.date).toLocaleDateString()}
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>App User</TableHead>
+                        <TableHead>Bank Account</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Date</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {incomes.map((income) => (
+                        <TableRow key={income._id}>
+                          <TableCell>
+                            <div className="font-medium">{income.appUserId.name}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{income.bankId.bankName}</div>
+                              <div className="text-sm text-gray-500">{income.bankId.accountNumber}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{income.category}</TableCell>
+                          <TableCell>
+                            <span className="font-medium text-green-600">
+                              {formatCurrency(income.amount)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">
+                              {income.description || 'No description'}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {new Date(income.date).toLocaleDateString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {incomes.length > 0 && (
+                    <Pagination
+                      currentPage={incomesPagination.page}
+                      totalPages={incomesPagination.pages}
+                      totalItems={incomesPagination.total}
+                      itemsPerPage={incomesPagination.limit}
+                      onPageChange={handleIncomePageChange}
+                      onItemsPerPageChange={handleIncomeLimitChange}
+                    />
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -622,47 +651,59 @@ const IncomeExpenseManagement = () => {
                   No expense records found. Create your first expense record.
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>App User</TableHead>
-                      <TableHead>Bank Account</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenses.map((expense) => (
-                      <TableRow key={expense._id}>
-                        <TableCell>
-                          <div className="font-medium">{expense.appUserId.name}</div>
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{expense.bankId.bankName}</div>
-                            <div className="text-sm text-gray-500">{expense.bankId.accountNumber}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{expense.category}</TableCell>
-                        <TableCell>
-                          <span className="font-medium text-red-600">
-                            {formatCurrency(expense.amount)}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm">
-                            {expense.description || 'No description'}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(expense.date).toLocaleDateString()}
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>App User</TableHead>
+                        <TableHead>Bank Account</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Date</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {expenses.map((expense) => (
+                        <TableRow key={expense._id}>
+                          <TableCell>
+                            <div className="font-medium">{expense.appUserId.name}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{expense.bankId.bankName}</div>
+                              <div className="text-sm text-gray-500">{expense.bankId.accountNumber}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{expense.category}</TableCell>
+                          <TableCell>
+                            <span className="font-medium text-red-600">
+                              {formatCurrency(expense.amount)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">
+                              {expense.description || 'No description'}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {new Date(expense.date).toLocaleDateString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {expenses.length > 0 && (
+                    <Pagination
+                      currentPage={expensesPagination.page}
+                      totalPages={expensesPagination.pages}
+                      totalItems={expensesPagination.total}
+                      itemsPerPage={expensesPagination.limit}
+                      onPageChange={handleExpensePageChange}
+                      onItemsPerPageChange={handleExpenseLimitChange}
+                    />
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
