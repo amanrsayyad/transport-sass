@@ -84,6 +84,12 @@ import { toast } from "react-hot-toast";
 import { DownloadButton } from "@/components/common/DownloadButton";
 
 const TripsPage = () => {
+  // Helper function to extract string value from PopulatedField
+  const getStringValue = (field: any): string => {
+    if (typeof field === 'string') return field;
+    if (field && typeof field === 'object' && field._id) return field._id;
+    return '';
+  };
   const dispatch = useDispatch<AppDispatch>();
   const {
     trips,
@@ -480,7 +486,23 @@ const TripsPage = () => {
 
   const handleEdit = (trip: Trip) => {
     setEditingTrip(trip);
-    setFormData(trip);
+    // Extract IDs from populated objects for form fields while preserving names
+    const formDataWithIds = {
+      ...trip,
+      driverId: typeof trip.driverId === 'object' ? trip.driverId._id : trip.driverId,
+      vehicleId: typeof trip.vehicleId === 'object' ? trip.vehicleId._id : trip.vehicleId,
+      routeWiseExpenseBreakdown: trip.routeWiseExpenseBreakdown?.map(route => ({
+        ...route,
+        bankId: typeof route.bankId === 'object' ? route.bankId._id : route.bankId,
+        customerId: typeof route.customerId === 'object' ? route.customerId._id : route.customerId,
+        userId: typeof route.userId === 'object' ? route.userId._id : route.userId,
+        // Preserve bankName and productName from the original data
+        bankName: route.bankName || (typeof route.bankId === 'object' ? route.bankId.bankName : ''),
+        productName: route.productName || '',
+        expenses: route.expenses || []
+      })) || []
+    };
+    setFormData(formDataWithIds);
     setIsSheetOpen(true);
   };
 
@@ -685,7 +707,7 @@ const TripsPage = () => {
                   <div>
                     <Label htmlFor="driver">Driver</Label>
                     <Select
-                      value={formData.driverId}
+                      value={getStringValue(formData.driverId)}
                       onValueChange={handleDriverSelect}
                     >
                       <SelectTrigger>
@@ -704,7 +726,7 @@ const TripsPage = () => {
                   <div>
                     <Label htmlFor="vehicle">Vehicle</Label>
                     <Select
-                      value={formData.vehicleId}
+                      value={getStringValue(formData.vehicleId)}
                       onValueChange={handleVehicleSelect}
                     >
                       <SelectTrigger>
@@ -933,7 +955,7 @@ const TripsPage = () => {
                             <div>
                               <Label>Customer</Label>
                               <Select
-                                value={route.customerId}
+                                value={getStringValue(route.customerId)}
                                 onValueChange={(value) => {
                                   const customer = customers.find(
                                     (c) => c._id === value
@@ -971,7 +993,7 @@ const TripsPage = () => {
                             <div>
                               <Label>App User</Label>
                               <Select
-                                value={route.userId}
+                                value={getStringValue(route.userId)}
                                 onValueChange={(value) => {
                                   const appUser = appUsers.find(
                                     (u: any) => u._id === value
@@ -1005,7 +1027,7 @@ const TripsPage = () => {
                             <div>
                               <Label>Bank</Label>
                               <Select
-                                value={route.bankId}
+                                value={getStringValue(route.bankId)}
                                 onValueChange={(value) => {
                                   const bank = userBanks.find(
                                     (b: any) => b._id === value

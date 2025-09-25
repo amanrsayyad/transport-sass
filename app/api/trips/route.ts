@@ -37,6 +37,9 @@ export async function GET(request: NextRequest) {
       .populate('driverId', 'name')
       .populate('vehicleId', 'vehicleNumber')
       .populate('createdBy', 'name')
+      .populate('routeWiseExpenseBreakdown.bankId', 'name')
+      .populate('routeWiseExpenseBreakdown.customerId', 'name')
+      .populate('routeWiseExpenseBreakdown.userId', 'name')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);

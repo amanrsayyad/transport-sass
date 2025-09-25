@@ -1,5 +1,8 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 
+// Type for populated object references
+type PopulatedField<T> = T | { _id: T; [key: string]: any };
+
 export interface Trip {
   _id: string;
   tripId: string;
@@ -7,9 +10,9 @@ export interface Trip {
   startKm: number;
   endKm: number;
   totalKm: number;
-  driverId: string;
+  driverId: PopulatedField<string>;
   driverName: string;
-  vehicleId: string;
+  vehicleId: PopulatedField<string>;
   vehicleNumber: string;
   status: 'Draft' | 'In Progress' | 'Completed' | 'Cancelled';
   remarks?: string;
@@ -21,7 +24,7 @@ export interface Trip {
   fuelNeededForTrip: number;
   totalTripKm: number;
   remainingAmount: number;
-  createdBy: string;
+  createdBy: PopulatedField<string>;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,12 +37,12 @@ export interface RouteWiseExpenseBreakdown {
   weight: number;
   rate: number;
   routeAmount: number;
-  userId: string;
+  userId: PopulatedField<string>;
   userName: string;
-  customerId: string;
+  customerId: PopulatedField<string>;
   customerName: string;
   bankName: string;
-  bankId: string;
+  bankId: PopulatedField<string>;
   paymentType: string;
   expenses: Expense[];
   totalExpense: number;
