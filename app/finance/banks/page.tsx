@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/lib/redux/store';
 import { 
@@ -13,16 +13,14 @@ import {
 import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DownloadButton } from '@/components/common/DownloadButton';
+import { FormDialog } from '@/components/common/FormDialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Edit, Plus, DollarSign, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
+import * as z from "zod";
 
 interface BankFormData {
   bankName: string;
@@ -46,19 +44,24 @@ interface BankUpdateData {
   appUserId: string;
 }
 
+const bankSchema = z.object({
+  bankName: z.string().min(1, "Bank name is required"),
+  accountNumber: z.string().min(1, "Account number is required"),
+  balance: z.number().min(0, "Balance must be positive"),
+  appUserId: z.string().min(1, "App user is required"),
+});
+
+const defaultValues = {
+  bankName: "",
+  accountNumber: "",
+  balance: 0,
+  appUserId: "",
+};
+
 const BankManagement = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { banks, loading, error } = useSelector((state: RootState) => state.banks);
   const { appUsers } = useSelector((state: RootState) => state.appUsers);
-  
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingBank, setEditingBank] = useState<any>(null);
-  const [formData, setFormData] = useState<BankFormData>({
-    bankName: '',
-    accountNumber: '',
-    balance: 0,
-    appUserId: '',
-  });
 
   useEffect(() => {
     dispatch(fetchBanks());
@@ -72,53 +75,51 @@ const BankManagement = () => {
     }
   }, [error, dispatch]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'balance' ? parseFloat(value) || 0 : value
-    }));
-  };
+  // Create bank fields configuration
+  const bankFields = [
+    {
+      name: "bankName",
+      label: "Bank Name",
+      type: "text" as const,
+      placeholder: "Enter bank name",
+      required: true,
+    },
+    {
+      name: "accountNumber",
+      label: "Account Number",
+      type: "text" as const,
+      placeholder: "Enter account number",
+      required: true,
+    },
+    {
+      name: "balance",
+      label: "Initial Balance",
+      type: "number" as const,
+      placeholder: "0.00",
+      required: false,
+    },
+    {
+      name: "appUserId",
+      label: "App User",
+      type: "select" as const,
+      placeholder: "Select app user",
+      options: appUsers.map((user) => ({
+        value: user._id,
+        label: user.name,
+      })),
+      required: true,
+    },
+  ];
 
-  const handleSelectChange = (value: string) => {
-    setFormData(prev => ({ ...prev, appUserId: value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.bankName || !formData.accountNumber || !formData.appUserId) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
+  const handleCreate = async (data: any) => {
     try {
-      if (editingBank) {
-        const updateData: BankUpdateData = { id: editingBank._id, ...formData };
-        await dispatch(updateBank(updateData)).unwrap();
-        toast.success('Bank updated successfully');
-      } else {
-        const createData: BankCreateData = { ...formData };
-        await dispatch(createBank(createData)).unwrap();
-        toast.success('Bank created successfully');
-      }
-      
-      setIsDialogOpen(false);
-      resetForm();
+      const createData: BankCreateData = { ...data };
+      await dispatch(createBank(createData)).unwrap();
+      toast.success('Bank created successfully');
     } catch (error: any) {
-      toast.error(error || 'Operation failed');
+      toast.error(error || 'Failed to create bank');
+      throw error;
     }
-  };
-
-  const handleEdit = (bank: any) => {
-    setEditingBank(bank);
-    setFormData({
-      bankName: bank.bankName,
-      accountNumber: bank.accountNumber,
-      balance: bank.balance,
-      appUserId: bank.appUserId._id,
-    });
-    setIsDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -130,21 +131,6 @@ const BankManagement = () => {
         toast.error(error || 'Failed to delete bank');
       }
     }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      bankName: '',
-      accountNumber: '',
-      balance: 0,
-      appUserId: '',
-    });
-    setEditingBank(null);
-  };
-
-  const handleDialogClose = () => {
-    setIsDialogOpen(false);
-    resetForm();
   };
 
   const formatCurrency = (amount: number) => {
@@ -165,93 +151,24 @@ const BankManagement = () => {
         
         <div className="flex space-x-2">
           <DownloadButton module="banks" data={banks} />
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) {
-              resetForm();
-            }
-          }}>
-            <DialogTrigger asChild>
-              <Button onClick={() => setIsDialogOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" />
+          <FormDialog
+            trigger={
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
                 Add Bank
               </Button>
-            </DialogTrigger>
-          </Dialog>
+            }
+            title="Add New Bank"
+            description="Enter bank details to add a new bank account."
+            schema={bankSchema}
+            fields={bankFields}
+            defaultValues={defaultValues}
+            onSubmit={handleCreate}
+            submitLabel="Create Bank"
+            isLoading={loading}
+            mode="create"
+          />
         </div>
-        <Dialog>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>
-                {editingBank ? 'Edit Bank' : 'Add New Bank'}
-              </DialogTitle>
-            </DialogHeader>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="bankName">Bank Name *</Label>
-                <Input
-                  id="bankName"
-                  name="bankName"
-                  value={formData.bankName}
-                  onChange={handleInputChange}
-                  placeholder="Enter bank name"
-                  required
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="accountNumber">Account Number *</Label>
-                <Input
-                  id="accountNumber"
-                  name="accountNumber"
-                  value={formData.accountNumber}
-                  onChange={handleInputChange}
-                  placeholder="Enter account number"
-                  required
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="balance">Initial Balance</Label>
-                <Input
-                  id="balance"
-                  name="balance"
-                  type="number"
-                  step="0.01"
-                  value={formData.balance}
-                  onChange={handleInputChange}
-                  placeholder="0.00"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="appUserId">App User *</Label>
-                <Select value={formData.appUserId} onValueChange={handleSelectChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select app user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {appUsers.map((user) => (
-                      <SelectItem key={user._id} value={user._id}>
-                        {user.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleDialogClose}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={loading}>
-                  {loading ? 'Saving...' : (editingBank ? 'Update' : 'Create')}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {/* Summary Cards */}

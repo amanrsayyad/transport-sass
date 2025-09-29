@@ -298,10 +298,7 @@ const FuelTrackingManagement = () => {
                   Add Fuel Record
                 </Button>
               </DialogTrigger>
-            </Dialog>
-          </div>
-          <Dialog>
-            <DialogContent className="sm:max-w-[500px]">
+              <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>Add Fuel Tracking Record</DialogTitle>
               </DialogHeader>
@@ -572,7 +569,8 @@ const FuelTrackingManagement = () => {
                 </div>
               </form>
             </DialogContent>
-          </Dialog>
+            </Dialog>
+          </div>
         </div>
 
         {/* Summary Cards */}
