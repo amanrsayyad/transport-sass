@@ -122,6 +122,17 @@ const BankManagement = () => {
     }
   };
 
+  const handleEdit = async (data: any, id: string) => {
+    try {
+      const updateData: BankUpdateData = { id, ...data };
+      await dispatch(updateBank(updateData)).unwrap();
+      toast.success('Bank updated successfully');
+    } catch (error: any) {
+      toast.error(error || 'Failed to update bank');
+      throw error;
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this bank?')) {
       try {
@@ -256,13 +267,28 @@ const BankManagement = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(bank)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
+                        <FormDialog
+                          trigger={
+                            <Button variant="outline" size="sm">
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          }
+                          title={`Edit Bank: ${bank.bankName}`}
+                          description="Update bank information"
+                          schema={bankSchema}
+                          fields={bankFields}
+                          defaultValues={defaultValues}
+                          initialData={{
+                            bankName: bank.bankName,
+                            accountNumber: bank.accountNumber,
+                            balance: bank.balance,
+                            appUserId: bank.appUserId._id,
+                          }}
+                          onSubmit={(data) => handleEdit(data, bank._id)}
+                          submitLabel="Update Bank"
+                          isLoading={loading}
+                          mode="edit"
+                        />
                         <Button
                           variant="outline"
                           size="sm"
