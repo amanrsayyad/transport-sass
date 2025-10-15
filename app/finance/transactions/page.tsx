@@ -355,6 +355,8 @@ const TransactionHistory = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[120px]">App User</TableHead>
+                      <TableHead className="min-w-[150px]">Bank Name</TableHead>
+                      <TableHead className="min-w-[120px]">Account Number</TableHead>
                       <TableHead className="min-w-[100px]">Type</TableHead>
                       <TableHead className="min-w-[200px]">
                         Description
@@ -373,6 +375,16 @@ const TransactionHistory = () => {
                         <TableCell>
                           <div className="font-medium">
                             {transaction.appUserId.name}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">
+                            {transaction.fromBankId?.bankName || transaction.toBankId?.bankName || '-'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-mono text-sm">
+                            {transaction.fromBankId?.accountNumber || transaction.toBankId?.accountNumber || '-'}
                           </div>
                         </TableCell>
                         <TableCell>

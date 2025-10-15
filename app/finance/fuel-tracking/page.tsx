@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import * as z from "zod";
 import { RootState, AppDispatch } from '@/lib/redux/store';
 import { 
   fetchFuelTrackings,
   createFuelTracking,
+  updateFuelTracking,
+  deleteFuelTracking,
   clearError,
-  FuelTrackingCreateData
+  FuelTrackingCreateData,
+  FuelTracking
 } from '@/lib/redux/slices/operationsSlice';
 import { fetchBanks } from '@/lib/redux/slices/bankSlice';
 import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
@@ -15,29 +19,135 @@ import { fetchVehicles } from '@/lib/redux/slices/vehicleSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import Pagination from '@/components/common/Pagination';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
-import { Plus, Fuel, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import { Plus, Fuel, TrendingUp, Calendar, DollarSign, Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DownloadButton } from '@/components/common/DownloadButton';
+import { FormDialog } from '@/components/common/FormDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
-interface FuelTrackingFormData {
-  appUserId: string;
-  bankId: string;
-  vehicleId: string;
-  startKm: number;
-  endKm: number;
-  fuelQuantity: number;
-  fuelRate: number;
-  date: string;
-  description: string;
-  paymentType: string;
-}
+// Zod schema for fuel tracking validation
+const fuelTrackingSchema = z.object({
+  appUserId: z.string().min(1, "App user is required"),
+  bankId: z.string().min(1, "Bank account is required"),
+  vehicleId: z.string().min(1, "Vehicle is required"),
+  startKm: z.number().min(0, "Start KM must be positive"),
+  endKm: z.number().min(0, "End KM must be positive"),
+  fuelQuantity: z.number().min(0.1, "Fuel quantity must be greater than 0"),
+  fuelRate: z.number().min(0.1, "Fuel rate must be greater than 0"),
+  date: z.string().min(1, "Date is required"),
+  description: z.string().optional(),
+  paymentType: z.string().min(1, "Payment type is required"),
+});
+
+// Field configuration for FormDialog
+const fuelTrackingFields = [
+  {
+    name: "appUserId",
+    label: "App User",
+    type: "select" as const,
+    placeholder: "Select app user",
+    required: true,
+  },
+  {
+    name: "bankId",
+    label: "Bank Account",
+    type: "select" as const,
+    placeholder: "Select bank account",
+    required: true,
+  },
+  {
+    name: "vehicleId",
+    label: "Vehicle",
+    type: "select" as const,
+    placeholder: "Select vehicle",
+    required: true,
+  },
+  {
+    name: "startKm",
+    label: "Start KM",
+    type: "number" as const,
+    placeholder: "Enter start KM",
+    required: true,
+  },
+  {
+    name: "endKm",
+    label: "End KM",
+    type: "number" as const,
+    placeholder: "Enter end KM",
+    required: true,
+  },
+  {
+    name: "fuelQuantity",
+    label: "Fuel Quantity (L)",
+    type: "number" as const,
+    placeholder: "Enter fuel quantity",
+    required: true,
+  },
+  {
+    name: "fuelRate",
+    label: "Fuel Rate (per L)",
+    type: "number" as const,
+    placeholder: "Enter fuel rate",
+    required: true,
+  },
+  {
+    name: "date",
+    label: "Date",
+    type: "date" as const,
+    placeholder: "Select date",
+    required: true,
+  },
+  {
+    name: "paymentType",
+    label: "Payment Type",
+    type: "select" as const,
+    placeholder: "Select payment type",
+    options: [
+      { value: "Cash", label: "Cash" },
+      { value: "UPI", label: "UPI" },
+      { value: "Net Banking", label: "Net Banking" },
+      { value: "Credit Card", label: "Credit Card" },
+      { value: "Debit Card", label: "Debit Card" },
+      { value: "Cheque", label: "Cheque" },
+    ],
+    required: true,
+  },
+  {
+    name: "description",
+    label: "Description",
+    type: "textarea" as const,
+    placeholder: "Enter description (optional)",
+    required: false,
+  },
+];
+
+// Default values for the form
+const defaultValues = {
+  appUserId: "",
+  bankId: "",
+  vehicleId: "",
+  startKm: 0,
+  endKm: 0,
+  fuelQuantity: 0,
+  fuelRate: 0,
+  date: new Date().toISOString().split('T')[0],
+  description: "",
+  paymentType: "",
+};
+
+// FuelTrackingFormData interface removed - FormDialog uses Zod schema types
 
 const FuelTrackingManagement = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -46,23 +156,17 @@ const FuelTrackingManagement = () => {
   const { appUsers } = useSelector((state: RootState) => state.appUsers);
   const { vehicles } = useSelector((state: RootState) => state.vehicles);
   
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [carryForwardFuel, setCarryForwardFuel] = useState(0);
-  const [selectedVehicleData, setSelectedVehicleData] = useState<any>(null);
-  const [latestTripData, setLatestTripData] = useState<any>(null);
-  const [latestFuelRecord, setLatestFuelRecord] = useState<any>(null);
-  const [formData, setFormData] = useState<FuelTrackingFormData>({
-    appUserId: '',
-    bankId: '',
-    vehicleId: '',
-    startKm: 0,
-    endKm: 0,
-    fuelQuantity: 0,
-    fuelRate: 0,
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-    paymentType: '',
-  });
+  // State for dynamic field management
+  const [selectedAppUserId, setSelectedAppUserId] = useState<string>("");
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [dynamicStartKm, setDynamicStartKm] = useState<number>(0);
+  const [previousRemainingFuel, setPreviousRemainingFuel] = useState<number>(0);
+  
+  // State for editing functionality
+  const [editingRecord, setEditingRecord] = useState<FuelTracking | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  
+  // FormDialog will handle its own state management
 
   // Payment types array
   const paymentTypes = ['Cash', 'UPI', 'Net Banking', 'Credit Card', 'Debit Card', 'Cheque'];
@@ -78,6 +182,52 @@ const FuelTrackingManagement = () => {
     dispatch(fetchFuelTrackings({ page, limit: fuelTrackingsPagination.limit }));
   };
 
+  // Handle field changes for dynamic updates
+  const handleFieldChange = async (fieldName: string, value: any, currentValues: Record<string, any>) => {
+    if (fieldName === 'appUserId') {
+      setSelectedAppUserId(value);
+      // Reset bankId when app user changes to force user to select a new bank
+      // This will be handled by the form itself through field regeneration
+    }
+    
+    if (fieldName === 'vehicleId') {
+      setSelectedVehicleId(value);
+      
+      // Fetch latest trip record to get end km for start km
+      try {
+        const tripResponse = await fetch(`/api/trips/latest/${value}`);
+        let startKm = 0;
+        
+        if (tripResponse.ok) {
+          const latestTrip = await tripResponse.json();
+          startKm = latestTrip.endKm || 0;
+        }
+        
+        // Update dynamic start km state
+        setDynamicStartKm(startKm);
+        
+        // Fetch latest fuel tracking record to get remaining fuel for carry-forward
+        const fuelResponse = await fetch(`/api/fuel-tracking/latest/${value}`);
+        let remainingFuel = 0;
+        
+        if (fuelResponse.ok) {
+          const latestFuelRecord = await fuelResponse.json();
+          remainingFuel = latestFuelRecord.remainingFuelQuantity || 0;
+        }
+        
+        // Update previous remaining fuel state
+        setPreviousRemainingFuel(remainingFuel);
+        
+        // Update the form field value directly through the form's setValue if available
+        // The FormDialog will handle this through field regeneration
+      } catch (error) {
+        console.error('Error fetching latest trip or fuel record:', error);
+        setDynamicStartKm(0);
+        setPreviousRemainingFuel(0);
+      }
+    }
+  };
+
   const handleLimitChange = (limit: number) => {
     dispatch(fetchFuelTrackings({ page: 1, limit }));
   };
@@ -89,91 +239,25 @@ const FuelTrackingManagement = () => {
     }
   }, [error, dispatch]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: ['startKm', 'endKm', 'fuelQuantity', 'fuelRate'].includes(name) 
-        ? parseFloat(value) || 0 
-        : value
-    }));
-  };
+  // Old form handling functions removed - FormDialog handles form state internally
 
-  const handleSelectChange = async (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // If vehicle is selected, fetch both trip end KM and carry-forward fuel quantity
-    if (name === 'vehicleId' && value) {
-      try {
-        // Find selected vehicle details
-        const selectedVehicle = vehicles.find(v => v._id === value);
-        setSelectedVehicleData(selectedVehicle);
-        
-        // Fetch latest trip record to get end KM for start KM field
-        const tripResponse = await fetch(`/api/trips/latest/${value}`);
-        let startKm = 0;
-        let latestTrip = null;
-        
-        if (tripResponse.ok) {
-          latestTrip = await tripResponse.json();
-          startKm = latestTrip.endKm || 0;
-        }
-        setLatestTripData(latestTrip);
-        
-        // Fetch latest fuel tracking record for carry-forward fuel
-        const fuelResponse = await fetch(`/api/fuel-tracking/latest/${value}`);
-        let remainingFuel = 0;
-        let fuelRecord = null;
-        
-        if (fuelResponse.ok) {
-          fuelRecord = await fuelResponse.json();
-          remainingFuel = fuelRecord.remainingFuelQuantity || 0;
-        }
-        
-        // Update form data with start KM from latest trip and fuel quantity with carry forward fuel
-        const fuelQuantityValue = remainingFuel === 0 && fuelRecord ? fuelRecord.fuelQuantity : remainingFuel;
-        setFormData(prev => ({ ...prev, startKm, fuelQuantity: fuelQuantityValue }));
-        setCarryForwardFuel(remainingFuel);
-        setLatestFuelRecord(fuelRecord);
-        
-      } catch (error) {
-        console.error('Error fetching vehicle data:', error);
-        setCarryForwardFuel(0);
-        setSelectedVehicleData(null);
-        setLatestTripData(null);
-        setLatestFuelRecord(null);
-      }
-    } else if (name === 'vehicleId' && !value) {
-      // Reset vehicle-related data when no vehicle is selected
-      setSelectedVehicleData(null);
-      setLatestTripData(null);
-      setLatestFuelRecord(null);
-      setCarryForwardFuel(0);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.appUserId || !formData.bankId || !formData.vehicleId || !formData.paymentType) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    if (formData.endKm <= formData.startKm) {
+  // Handle create for FormDialog
+  const handleCreate = async (data: any) => {
+    // Validation
+    if (data.endKm <= data.startKm) {
       toast.error('End KM must be greater than Start KM');
       return;
     }
 
-    if (formData.fuelQuantity <= 0 || formData.fuelRate <= 0) {
+    if (data.fuelQuantity <= 0 || data.fuelRate <= 0) {
       toast.error('Fuel quantity and rate must be greater than 0');
       return;
     }
 
-    const totalAmount = formData.fuelQuantity * formData.fuelRate;
-    const distance = formData.endKm - formData.startKm;
-    const truckAverage = distance / formData.fuelQuantity;
-    const selectedBank = banks.find(bank => bank._id === formData.bankId);
+    const totalAmount = data.fuelQuantity * data.fuelRate;
+    const distance = data.endKm - data.startKm;
+    const truckAverage = distance / data.fuelQuantity;
+    const selectedBank = banks.find(bank => bank._id === data.bankId);
     
     if (selectedBank && totalAmount > selectedBank.balance) {
       toast.error('Insufficient bank balance for this fuel expense');
@@ -181,55 +265,99 @@ const FuelTrackingManagement = () => {
     }
 
     const fuelTrackingData: FuelTrackingCreateData = {
-      appUserId: formData.appUserId,
-      bankId: formData.bankId,
-      vehicleId: formData.vehicleId,
-      startKm: formData.startKm,
-      endKm: formData.endKm,
-      fuelQuantity: formData.fuelQuantity,
-      fuelRate: formData.fuelRate,
+      appUserId: data.appUserId,
+      bankId: data.bankId,
+      vehicleId: data.vehicleId,
+      startKm: data.startKm,
+      endKm: data.endKm,
+      fuelQuantity: data.fuelQuantity,
+      fuelRate: data.fuelRate,
       totalAmount,
       truckAverage,
-      date: formData.date,
-      description: formData.description,
-      paymentType: formData.paymentType,
+      date: data.date,
+      description: data.description || '',
+      paymentType: data.paymentType,
     };
 
     try {
       await dispatch(createFuelTracking(fuelTrackingData)).unwrap();
       toast.success('Fuel tracking record created successfully');
-      setIsDialogOpen(false);
-      resetForm();
       // Refresh data
       dispatch(fetchFuelTrackings({ page: fuelTrackingsPagination.page, limit: fuelTrackingsPagination.limit }));
       dispatch(fetchBanks());
     } catch (error: any) {
       toast.error(error || 'Failed to create fuel tracking record');
+      throw error; // Re-throw to let FormDialog handle the error state
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      appUserId: '',
-      bankId: '',
-      vehicleId: '',
-      startKm: 0,
-      endKm: 0,
-      fuelQuantity: 0,
-      fuelRate: 0,
-      date: new Date().toISOString().split('T')[0],
-      description: '',
-      paymentType: '',
-    });
-    setCarryForwardFuel(0);
-    setSelectedVehicleData(null);
-    setLatestTripData(null);
-    setLatestFuelRecord(null);
+  // Handle edit for FormDialog
+  const handleEdit = async (data: any, fuelRecord: FuelTracking) => {
+    if (!fuelRecord) return;
+
+    // Validation
+    if (data.endKm <= data.startKm) {
+      toast.error('End KM must be greater than Start KM');
+      return;
+    }
+
+    if (data.fuelQuantity <= 0 || data.fuelRate <= 0) {
+      toast.error('Fuel quantity and rate must be greater than 0');
+      return;
+    }
+
+    const totalAmount = data.fuelQuantity * data.fuelRate;
+    const distance = data.endKm - data.startKm;
+    const truckAverage = distance / data.fuelQuantity;
+    const selectedBank = banks.find(bank => bank._id === data.bankId);
+    
+    // Check bank balance (considering the original amount will be restored)
+    const originalAmount = fuelRecord.totalAmount;
+    const netAmountChange = totalAmount - originalAmount;
+    
+    if (selectedBank && netAmountChange > selectedBank.balance) {
+      toast.error('Insufficient bank balance for this fuel expense update');
+      return;
+    }
+
+    const updateData = {
+      appUserId: data.appUserId,
+      bankId: data.bankId,
+      vehicleId: data.vehicleId,
+      startKm: data.startKm,
+      endKm: data.endKm,
+      fuelQuantity: data.fuelQuantity,
+      fuelRate: data.fuelRate,
+      totalAmount,
+      truckAverage,
+      date: data.date,
+      description: data.description || '',
+      paymentType: data.paymentType,
+    };
+
+    try {
+      await dispatch(updateFuelTracking({ id: fuelRecord._id, fuelData: updateData })).unwrap();
+      toast.success('Fuel tracking record updated successfully');
+      // Refresh data
+      dispatch(fetchFuelTrackings({ page: fuelTrackingsPagination.page, limit: fuelTrackingsPagination.limit }));
+      dispatch(fetchBanks());
+    } catch (error: any) {
+      toast.error(error || 'Failed to update fuel tracking record');
+      throw error; // Re-throw to let FormDialog handle the error state
+    }
   };
 
-  const handleDialogClose = () => {
-    setIsDialogOpen(false);
-    resetForm();
+  // Handle delete
+  const handleDelete = async (record: FuelTracking) => {
+    try {
+      await dispatch(deleteFuelTracking(record._id)).unwrap();
+      toast.success('Fuel tracking record deleted successfully');
+      // Refresh data
+      dispatch(fetchFuelTrackings({ page: fuelTrackingsPagination.page, limit: fuelTrackingsPagination.limit }));
+      dispatch(fetchBanks());
+    } catch (error: any) {
+      toast.error(error || 'Failed to delete fuel tracking record');
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -247,23 +375,79 @@ const FuelTrackingManagement = () => {
     return banks.filter(bank => bank.isActive && bank.appUserId._id === userId);
   };
 
-  const getSelectedBank = () => {
-    return banks.find(bank => bank._id === formData.bankId);
-  };
+  // Helper functions that referenced formData removed - FormDialog handles calculations internally
 
-  const calculateTotalAmount = () => {
-    return formData.fuelQuantity * formData.fuelRate;
-  };
+  // Generate dynamic default values
+  const getDefaultValues = () => ({
+    appUserId: selectedAppUserId || "",
+    bankId: "",
+    vehicleId: selectedVehicleId || "",
+    startKm: selectedVehicleId ? dynamicStartKm : 0,
+    endKm: 0,
+    fuelQuantity: 0,
+    fuelRate: 0,
+    date: new Date().toISOString().split('T')[0],
+    description: "",
+    paymentType: "",
+  });
 
-  const calculateDistance = () => {
-    return formData.endKm - formData.startKm;
-  };
-
-  const calculateEstimatedAverage = () => {
-    const distance = calculateDistance();
-    return distance > 0 && formData.fuelQuantity > 0 
-      ? (distance / formData.fuelQuantity).toFixed(2) 
-      : '0';
+  // Generate dynamic field configuration with options
+  const getFuelTrackingFields = (selectedAppUserId?: string): any[] => {
+    const baseFields: any[] = fuelTrackingFields.map(field => {
+      if (field.name === 'appUserId') {
+        return {
+          ...field,
+          options: appUsers.map(user => ({
+            value: user._id,
+            label: user.name
+          }))
+        };
+      }
+      if (field.name === 'bankId') {
+        return {
+          ...field,
+          options: (selectedAppUserId ? getUserBanks(selectedAppUserId) : getActiveBanks()).map(bank => ({
+            value: bank._id,
+            label: `${bank.bankName} - ${bank.accountNumber} (${formatCurrency(bank.balance)})`
+          }))
+        };
+      }
+      if (field.name === 'vehicleId') {
+        return {
+          ...field,
+          options: vehicles.map(vehicle => ({
+            value: vehicle._id,
+            label: `${vehicle.registrationNumber} (${vehicle.vehicleType} ${vehicle.vehicleWeight}kg)`
+          }))
+        };
+      }
+      if (field.name === 'startKm') {
+        return {
+          ...field,
+          defaultValue: selectedVehicleId ? dynamicStartKm : 0,
+          placeholder: selectedVehicleId && dynamicStartKm > 0 
+            ? `Auto-filled from latest trip: ${dynamicStartKm} km` 
+            : "Enter start KM"
+        };
+      }
+      return field;
+    });
+  
+    // Add carry-forward fuel information field if a vehicle is selected and has remaining fuel
+    if (selectedVehicleId && previousRemainingFuel > 0) {
+      // Insert the carry-forward info field after vehicleId (index 2) and before startKm
+      const carryForwardField = {
+        name: "carryForwardInfo",
+        label: "Previous Remaining Fuel",
+        type: "info" as const,
+        value: `${previousRemainingFuel.toFixed(2)} L will be carried forward from the previous record`,
+        required: false,
+      } as const;
+      
+      baseFields.splice(3, 0, carryForwardField);
+    }
+  
+    return baseFields;
   };
 
   const totalFuelExpense = fuelTrackings.reduce((sum, fuel) => sum + fuel.totalAmount, 0);
@@ -280,296 +464,31 @@ const FuelTrackingManagement = () => {
           <div>
             <h1 className="text-3xl font-bold">Fuel Tracking Management</h1>
             <p className="text-gray-600">
-              Track fuel expenses and vehicle efficiency
+              Track fuel expenses and vehiJcle efficiency
             </p>
           </div>
 
           <div className="flex gap-2">
             <DownloadButton module="fuel-tracking" data={fuelTrackings} />
-            <Dialog open={isDialogOpen} onOpenChange={(open) => {
-              if (!open) {
-                resetForm();
-              }
-              setIsDialogOpen(open);
-            }}>
-              <DialogTrigger asChild>
-                <Button onClick={() => setIsDialogOpen(true)}>
+            <FormDialog
+              trigger={
+                <Button>
                   <Plus className="w-4 h-4 mr-2" />
                   Add Fuel Record
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Add Fuel Tracking Record</DialogTitle>
-              </DialogHeader>
+              }
+              title="Add Fuel Tracking Record"
+              description="Create a new fuel tracking record"
+              schema={fuelTrackingSchema}
+              fields={getFuelTrackingFields(selectedAppUserId)}
+              defaultValues={getDefaultValues()}
+              onSubmit={handleCreate}
+              onFieldChange={handleFieldChange}
+              submitLabel="Add Record"
+              isLoading={loading}
+              mode="create"
+            />
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <Label htmlFor="appUserId">App User *</Label>
-                    <Select
-                      value={formData.appUserId}
-                      onValueChange={(value) =>
-                        handleSelectChange("appUserId", value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select app user" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {appUsers.map((user) => (
-                          <SelectItem key={user._id} value={user._id}>
-                            {user.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="bankId">Bank Account *</Label>
-                    <Select
-                      value={formData.bankId}
-                      onValueChange={(value) =>
-                        handleSelectChange("bankId", value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select bank" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(formData.appUserId
-                          ? getUserBanks(formData.appUserId)
-                          : getActiveBanks()
-                        ).map((bank) => (
-                          <SelectItem key={bank._id} value={bank._id}>
-                            {bank.bankName} - {bank.accountNumber}
-                            <span className="text-green-600 ml-2">
-                              ({formatCurrency(bank.balance)})
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="vehicleId">Vehicle *</Label>
-                  <Select
-                    value={formData.vehicleId}
-                    onValueChange={(value) =>
-                      handleSelectChange("vehicleId", value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select vehicle" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vehicles.map((vehicle) => (
-                        <SelectItem key={vehicle._id} value={vehicle._id}>
-                          {vehicle.registrationNumber}
-                          <span className="text-sm text-gray-500 ml-2">
-                            ({vehicle.vehicleType} {vehicle.vehicleWeight})
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  
-                  {/* Display fetched vehicle data */}
-                  {selectedVehicleData && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                      {latestFuelRecord && (
-                        <div>
-                          <div className="text-xs space-y-1">
-                            <div>
-                              <span className="font-medium">KM Range:</span> 
-                              <span className="ml-1">{latestFuelRecord.startKm} - {latestFuelRecord.endKm} km</span>
-                            </div>
-                            <div>
-                              <span className="font-medium">Fuel Quantity:</span> 
-                              <span className="ml-1">{latestFuelRecord.fuelQuantity?.toFixed(2)}L</span>
-                            </div>
-                            <div>
-                               <span className="font-medium">Remaining Fuel:</span> 
-                               <span className={`font-bold ml-1 ${carryForwardFuel > 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                                 {carryForwardFuel === 0 ? latestFuelRecord.fuelQuantity?.toFixed(2) : carryForwardFuel.toFixed(2)}L
-                               </span>
-                             </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="startKm">Start KM *</Label>
-                    <Input
-                      id="startKm"
-                      name="startKm"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={formData.startKm}
-                      onChange={handleInputChange}
-                      placeholder="0"
-                      required
-                    />
-                    {latestTripData && formData.startKm > 0 && (
-                      <p className="text-xs mt-1 text-blue-600">
-                        ✓ Auto-filled from latest trip end KM
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="endKm">End KM *</Label>
-                    <Input
-                      id="endKm"
-                      name="endKm"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={formData.endKm}
-                      onChange={handleInputChange}
-                      placeholder="0"
-                      required
-                    />
-                    {formData.startKm > 0 && formData.endKm > 0 && (
-                      <p
-                        className={`text-sm mt-1 ${
-                          formData.endKm <= formData.startKm
-                            ? "text-red-500"
-                            : "text-green-600"
-                        }`}
-                      >
-                        Distance: {calculateDistance()} km
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="fuelQuantity">Fuel Quantity (L) *</Label>
-                    <Input
-                      id="fuelQuantity"
-                      name="fuelQuantity"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={formData.fuelQuantity}
-                      onChange={handleInputChange}
-                      placeholder="0.00"
-                      required
-                    />
-                    {carryForwardFuel > 0 && (
-                      <p className="text-sm mt-1 text-blue-600">
-                        Carry Forward: +{carryForwardFuel.toFixed(2)}L
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="fuelRate">Fuel Rate (per L) *</Label>
-                    <Input
-                      id="fuelRate"
-                      name="fuelRate"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={formData.fuelRate}
-                      onChange={handleInputChange}
-                      placeholder="0.00"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {formData.fuelQuantity > 0 && formData.fuelRate > 0 && (
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium">Total Amount:</span>
-                        <span className="ml-2 text-red-600 font-bold">
-                          {formatCurrency(calculateTotalAmount())}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="font-medium">Est. Average:</span>
-                        <span className="ml-2 text-blue-600 font-bold">
-                          {calculateEstimatedAverage()} km/L
-                        </span>
-                      </div>
-                    </div>
-                    {formData.bankId &&
-                      calculateTotalAmount() >
-                        (getSelectedBank()?.balance || 0) && (
-                        <p className="text-red-500 text-sm mt-2">
-                          ⚠️ Insufficient bank balance
-                        </p>
-                      )}
-                  </div>
-                )}
-
-                <div>
-                  <Label htmlFor="date">Date *</Label>
-                  <Input
-                    id="date"
-                    name="date"
-                    type="date"
-                    value={formData.date}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="paymentType">Payment Type *</Label>
-                  <Select
-                    value={formData.paymentType}
-                    onValueChange={(value) => handleSelectChange('paymentType', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select payment type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {paymentTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleDialogClose}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={
-                      loading ||
-                      formData.endKm <= formData.startKm ||
-                      (!!formData.bankId &&
-                        calculateTotalAmount() >
-                          (getSelectedBank()?.balance || 0))
-                    }
-                  >
-                    {loading ? "Adding..." : "Add Record"}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-            </Dialog>
           </div>
         </div>
 
@@ -657,6 +576,7 @@ const FuelTrackingManagement = () => {
                     <TableHead>Total Amount</TableHead>
                     <TableHead>Average</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -717,6 +637,60 @@ const FuelTrackingManagement = () => {
                       </TableCell>
                       <TableCell>
                         {new Date(fuel.date).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <FormDialog
+                            trigger={
+                              <Button variant="outline" size="sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            }
+                            title="Edit Fuel Tracking Record"
+                            description="Update the fuel tracking record"
+                            schema={fuelTrackingSchema}
+                            fields={getFuelTrackingFields(fuel.appUserId._id)}
+                            defaultValues={{
+                              appUserId: fuel.appUserId._id,
+                              bankId: fuel.bankId._id,
+                              vehicleId: fuel.vehicleId._id,
+                              startKm: fuel.startKm,
+                              endKm: fuel.endKm,
+                              fuelQuantity: fuel.fuelQuantity,
+                              fuelRate: fuel.fuelRate,
+                              date: fuel.date.split('T')[0],
+                              description: fuel.description || '',
+                              paymentType: fuel.paymentType,
+                            }}
+                            onSubmit={(data) => handleEdit(data, fuel)}
+                            onFieldChange={handleFieldChange}
+                            submitLabel="Update Record"
+                            isLoading={loading}
+                            mode="edit"
+                          />
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" size="sm">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. This will permanently delete the fuel tracking record
+                                  and restore the bank balance.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(fuel)}>
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

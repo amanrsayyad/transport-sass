@@ -69,6 +69,7 @@ export interface FuelTracking {
     vehicleType: string;
     make: string;
     model: string;
+    registrationNumber: string;
   };
   startKm: number;
   endKm: number;
@@ -78,6 +79,7 @@ export interface FuelTracking {
   truckAverage: number;
   date: string;
   description: string;
+  paymentType: string;
   transactionId?: string;
   createdAt: string;
   updatedAt: string;
@@ -134,7 +136,7 @@ export const fetchDriverBudgets = createAsyncThunk(
       if (params.page) queryParams.append('page', params.page.toString());
       if (params.limit) queryParams.append('limit', params.limit.toString());
       
-      const response = await fetch(`/api/driver-budget?${queryParams}`);
+      const response = await fetch(`/api/driver-budgets?${queryParams}`);
       if (!response.ok) {
         const error = await response.json();
         return rejectWithValue(error.error || 'Failed to fetch driver budgets');
@@ -209,6 +211,50 @@ export const createFuelTracking = createAsyncThunk(
       }
       
       return await response.json();
+    } catch (error) {
+      return rejectWithValue('Network error occurred');
+    }
+  }
+);
+
+export const updateFuelTracking = createAsyncThunk(
+  'operations/updateFuelTracking',
+  async ({ id, fuelData }: { id: string; fuelData: Partial<FuelTrackingCreateData> }, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/fuel-tracking/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(fuelData),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.error || 'Failed to update fuel tracking');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      return rejectWithValue('Network error occurred');
+    }
+  }
+);
+
+export const deleteFuelTracking = createAsyncThunk(
+  'operations/deleteFuelTracking',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/fuel-tracking/${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.error || 'Failed to delete fuel tracking');
+      }
+      
+      return id;
     } catch (error) {
       return rejectWithValue('Network error occurred');
     }
@@ -304,6 +350,37 @@ const operationsSlice = createSlice({
         state.fuelTrackings.unshift(action.payload);
       })
       .addCase(createFuelTracking.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Update fuel tracking
+      .addCase(updateFuelTracking.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateFuelTracking.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.fuelTrackings.findIndex(item => item._id === action.payload._id);
+        if (index !== -1) {
+          state.fuelTrackings[index] = action.payload;
+        }
+      })
+      .addCase(updateFuelTracking.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Delete fuel tracking
+      .addCase(deleteFuelTracking.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteFuelTracking.fulfilled, (state, action) => {
+        state.loading = false;
+        state.fuelTrackings = state.fuelTrackings.filter(item => item._id !== action.payload);
+      })
+      .addCase(deleteFuelTracking.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });

@@ -149,6 +149,50 @@ export const createIncome = createAsyncThunk(
   }
 );
 
+export const updateIncome = createAsyncThunk(
+  'finance/updateIncome',
+  async ({ id, data }: { id: string; data: IncomeCreateData }, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/income/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.error || 'Failed to update income');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      return rejectWithValue('Network error occurred');
+    }
+  }
+);
+
+export const deleteIncome = createAsyncThunk(
+  'finance/deleteIncome',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/income/${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.error || 'Failed to delete income');
+      }
+      
+      return { id };
+    } catch (error) {
+      return rejectWithValue('Network error occurred');
+    }
+  }
+);
+
 // Async thunks for Expense
 export const fetchExpenses = createAsyncThunk(
   'finance/fetchExpenses',
@@ -188,6 +232,50 @@ export const createExpense = createAsyncThunk(
       }
       
       return await response.json();
+    } catch (error) {
+      return rejectWithValue('Network error occurred');
+    }
+  }
+);
+
+export const updateExpense = createAsyncThunk(
+  'finance/updateExpense',
+  async ({ id, data }: { id: string; data: ExpenseCreateData }, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/expenses/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.error || 'Failed to update expense');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      return rejectWithValue('Network error occurred');
+    }
+  }
+);
+
+export const deleteExpense = createAsyncThunk(
+  'finance/deleteExpense',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`/api/expenses/${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.error || 'Failed to delete expense');
+      }
+      
+      return { id };
     } catch (error) {
       return rejectWithValue('Network error occurred');
     }
@@ -283,6 +371,68 @@ const financeSlice = createSlice({
         state.expenses.unshift(action.payload);
       })
       .addCase(createExpense.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Update income
+      .addCase(updateIncome.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateIncome.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.incomes.findIndex(income => income._id === action.payload._id);
+        if (index !== -1) {
+          state.incomes[index] = action.payload;
+        }
+      })
+      .addCase(updateIncome.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Delete income
+      .addCase(deleteIncome.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteIncome.fulfilled, (state, action) => {
+        state.loading = false;
+        state.incomes = state.incomes.filter(income => income._id !== action.payload.id);
+      })
+      .addCase(deleteIncome.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Update expense
+      .addCase(updateExpense.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateExpense.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.expenses.findIndex(expense => expense._id === action.payload._id);
+        if (index !== -1) {
+          state.expenses[index] = action.payload;
+        }
+      })
+      .addCase(updateExpense.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      // Delete expense
+      .addCase(deleteExpense.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteExpense.fulfilled, (state, action) => {
+        state.loading = false;
+        state.expenses = state.expenses.filter(expense => expense._id !== action.payload.id);
+      })
+      .addCase(deleteExpense.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });

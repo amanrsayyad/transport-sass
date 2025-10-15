@@ -181,9 +181,7 @@ const BankTransfers = () => {
                 New Transfer
               </Button>
             </DialogTrigger>
-          </Dialog>
-        </div>
-        <Dialog>
+            
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Create Bank Transfer</DialogTitle>
@@ -342,7 +340,8 @@ const BankTransfers = () => {
               </div>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {/* Summary Cards */}

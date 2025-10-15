@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import * as z from "zod";
 import { RootState, AppDispatch } from '@/lib/redux/store';
 import { 
   fetchDriverBudgets,
@@ -13,17 +14,96 @@ import { fetchAppUsers } from '@/lib/redux/slices/appUserSlice';
 import { fetchDrivers } from '@/lib/redux/slices/driverSlice';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DownloadButton } from '@/components/common/DownloadButton';
+import { FormDialog } from '@/components/common/FormDialog';
 import Pagination from '@/components/common/Pagination';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Textarea } from '@/components/ui/textarea';
 import { Plus, Users, DollarSign, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Zod schema for driver budget validation
+const driverBudgetSchema = z.object({
+  appUserId: z.string().min(1, "App user is required"),
+  bankId: z.string().min(1, "Bank account is required"),
+  driverId: z.string().min(1, "Driver is required"),
+  dailyBudgetAmount: z.number().min(0.01, "Daily budget amount must be greater than 0"),
+  date: z.string().min(1, "Date is required"),
+  description: z.string().optional(),
+  paymentType: z.string().min(1, "Payment type is required"),
+});
+
+// Field configuration for FormDialog
+const driverBudgetFields = [
+  {
+    name: "appUserId",
+    label: "App User",
+    type: "select" as const,
+    placeholder: "Select app user",
+    required: true,
+  },
+  {
+    name: "bankId",
+    label: "Bank Account",
+    type: "select" as const,
+    placeholder: "Select bank account",
+    required: true,
+  },
+  {
+    name: "driverId",
+    label: "Driver",
+    type: "select" as const,
+    placeholder: "Select driver",
+    required: true,
+  },
+  {
+    name: "dailyBudgetAmount",
+    label: "Daily Budget Amount",
+    type: "number" as const,
+    placeholder: "Enter daily budget amount",
+    required: true,
+  },
+  {
+    name: "date",
+    label: "Date",
+    type: "date" as const,
+    placeholder: "Select date",
+    required: true,
+  },
+  {
+    name: "paymentType",
+    label: "Payment Type",
+    type: "select" as const,
+    placeholder: "Select payment type",
+    options: [
+      { value: "Cash", label: "Cash" },
+      { value: "UPI", label: "UPI" },
+      { value: "Net Banking", label: "Net Banking" },
+      { value: "Credit Card", label: "Credit Card" },
+      { value: "Debit Card", label: "Debit Card" },
+      { value: "Cheque", label: "Cheque" },
+    ],
+    required: true,
+  },
+  {
+    name: "description",
+    label: "Description",
+    type: "textarea" as const,
+    placeholder: "Enter description (optional)",
+    required: false,
+  },
+];
+
+// Default values for the form
+const defaultValues = {
+  appUserId: "",
+  bankId: "",
+  driverId: "",
+  dailyBudgetAmount: 0,
+  date: new Date().toISOString().split('T')[0],
+  description: "",
+  paymentType: "",
+};
 
 interface DriverBudgetFormData {
   appUserId: string;
@@ -42,26 +122,68 @@ const DriverBudgetManagement = () => {
   const { appUsers } = useSelector((state: RootState) => state.appUsers);
   const { drivers } = useSelector((state: RootState) => state.drivers);
   
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [carryForwardBudget, setCarryForwardBudget] = useState(0);
-  const [formData, setFormData] = useState<DriverBudgetFormData>({
-    appUserId: '',
-    bankId: '',
-    driverId: '',
-    dailyBudgetAmount: 0,
-    date: new Date().toISOString().split('T')[0],
-    description: '',
-    paymentType: '',
-  });
+  const [selectedAppUserId, setSelectedAppUserId] = useState<string>("");
+  const [selectedDriverId, setSelectedDriverId] = useState<string>("");
+  const [previousBudgetAmount, setPreviousBudgetAmount] = useState<number>(0);
 
-  const paymentTypes = [
-    "Cash",
-    "UPI",
-    "Net Banking",
-    "Credit Card",
-    "Debit Card",
-    "Cheque"
-  ];
+  // Helper function to generate dynamic field options
+  const generateFieldsWithOptions = (selectedAppUserId?: string) => {
+    const baseFields = driverBudgetFields.map(field => {
+      if (field.name === "appUserId") {
+        return {
+          ...field,
+          options: appUsers.map(user => ({
+            value: user._id,
+            label: user.name
+          }))
+        };
+      }
+      if (field.name === "bankId") {
+        const filteredBanks = selectedAppUserId 
+          ? banks.filter(bank => bank.isActive && bank.appUserId._id === selectedAppUserId)
+          : banks.filter(bank => bank.isActive);
+        return {
+          ...field,
+          options: filteredBanks.map(bank => ({
+            value: bank._id,
+            label: `${bank.bankName} - ${bank.accountNumber} (${formatCurrency(bank.balance)})`
+          }))
+        };
+      }
+      if (field.name === "driverId") {
+        return {
+          ...field,
+          options: drivers.map(driver => ({
+            value: driver._id,
+            label: driver.name
+          }))
+        };
+      }
+      if (field.name === "dailyBudgetAmount" && selectedDriverId && previousBudgetAmount > 0) {
+        return {
+          ...field,
+          placeholder: `Enter new budget amount (${formatCurrency(previousBudgetAmount)} will be added automatically)`
+        };
+      }
+      return field;
+    });
+
+    // Add carry-forward budget information field if a driver is selected and has previous budget
+    if (selectedDriverId && previousBudgetAmount > 0) {
+      // Insert the carry-forward info field after driverId (index 2) and before dailyBudgetAmount
+      const carryForwardField: any = {
+        name: "carryForwardInfo",
+        label: "Previous Budget Carry-Forward",
+        type: "info",
+        value: `${formatCurrency(previousBudgetAmount)} from previous record will be added to the new budget amount you enter`,
+        required: false,
+      };
+      
+      baseFields.splice(3, 0, carryForwardField);
+    }
+
+    return baseFields;
+  };
 
   useEffect(() => {
     dispatch(fetchDriverBudgets({ page: driverBudgetsPagination.page, limit: driverBudgetsPagination.limit }));
@@ -85,71 +207,67 @@ const DriverBudgetManagement = () => {
     }
   }, [error, dispatch]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'dailyBudgetAmount' ? parseFloat(value) || 0 : value
-    }));
-  };
+  // Generate dynamic default values
+  const getDefaultValues = () => ({
+    appUserId: selectedAppUserId || "",
+    bankId: "",
+    driverId: selectedDriverId || "",
+    dailyBudgetAmount: 0, // User enters new amount, previous amount will be added during submission
+    date: new Date().toISOString().split('T')[0],
+    description: "",
+    paymentType: "",
+  });
 
-  const handleSelectChange = async (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Fetch carry-forward budget when driver is selected
-    if (name === 'driverId' && value) {
-      try {
-        const response = await fetch(`/api/driver-budgets/latest/${value}`);
-        if (response.ok) {
-          const budgetData = await response.json();
-          setCarryForwardBudget(budgetData.remainingBudgetAmount || 0);
-        } else {
-          setCarryForwardBudget(0);
-        }
-      } catch (error) {
-        console.error('Error fetching driver budget:', error);
-        setCarryForwardBudget(0);
-      }
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.appUserId || !formData.bankId || !formData.driverId || formData.dailyBudgetAmount <= 0) {
-      toast.error('Please fill in all required fields with valid values');
-      return;
-    }
-
+  const handleSubmit = async (data: any): Promise<void> => {
     try {
-      await dispatch(createDriverBudget(formData)).unwrap();
+      // Add previous budget amount to the entered amount if carry-forward is applicable
+      const finalData = { ...data };
+      if (selectedDriverId && previousBudgetAmount > 0) {
+        finalData.dailyBudgetAmount = data.dailyBudgetAmount + previousBudgetAmount;
+        toast.info(`Added ${formatCurrency(previousBudgetAmount)} carry-forward amount. Total: ${formatCurrency(finalData.dailyBudgetAmount)}`);
+      }
+      
+      await dispatch(createDriverBudget(finalData)).unwrap();
       toast.success('Driver budget allocated successfully');
-      setIsDialogOpen(false);
-      resetForm();
       // Refresh data
       dispatch(fetchDriverBudgets({ page: driverBudgetsPagination.page, limit: driverBudgetsPagination.limit }));
       dispatch(fetchBanks());
+      
+      // Reset carry-forward state after successful submission
+      setSelectedDriverId("");
+      setPreviousBudgetAmount(0);
     } catch (error: any) {
       toast.error(error || 'Failed to allocate driver budget');
+      throw error; // Re-throw to let FormDialog handle the error
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      appUserId: '',
-      bankId: '',
-      driverId: '',
-      dailyBudgetAmount: 0,
-      date: new Date().toISOString().split('T')[0],
-      description: '',
-      paymentType: '',
-    });
-    setCarryForwardBudget(0);
-  };
-
-  const handleDialogClose = () => {
-    setIsDialogOpen(false);
-    resetForm();
+  const handleFieldChange = async (fieldName: string, value: any, currentValues: Record<string, any>) => {
+    if (fieldName === "appUserId") {
+      setSelectedAppUserId(value);
+    }
+    
+    if (fieldName === "driverId") {
+      setSelectedDriverId(value);
+      
+      // Fetch latest driver budget record to get previous budget amount for carry-forward
+      try {
+        const response = await fetch(`/api/driver-budgets/latest/${value}`);
+        let previousBudget = 0;
+        
+        if (response.ok) {
+          const latestBudgetRecord = await response.json();
+          previousBudget = latestBudgetRecord.remainingBudgetAmount || latestBudgetRecord.dailyBudgetAmount || 0;
+        }
+        
+        // Update previous budget amount state
+        setPreviousBudgetAmount(previousBudget);
+        
+      } catch (error) {
+        console.error('Error fetching latest driver budget record:', error);
+        setPreviousBudgetAmount(0);
+      }
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -157,18 +275,6 @@ const DriverBudgetManagement = () => {
       style: 'currency',
       currency: 'INR'
     }).format(amount);
-  };
-
-  const getActiveBanks = () => {
-    return banks.filter(bank => bank.isActive);
-  };
-
-  const getUserBanks = (userId: string) => {
-    return banks.filter(bank => bank.isActive && bank.appUserId._id === userId);
-  };
-
-  const getSelectedBank = () => {
-    return banks.find(bank => bank._id === formData.bankId);
   };
 
   const totalBudgetAllocated = driverBudgets.reduce((sum, budget) => sum + budget.dailyBudgetAmount, 0);
@@ -188,184 +294,25 @@ const DriverBudgetManagement = () => {
         
         <div className="flex space-x-2">
           <DownloadButton module="driver-budgets" data={driverBudgets} />
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) {
-              resetForm();
-            }
-          }}>
-            <DialogTrigger asChild>
-              <Button onClick={() => setIsDialogOpen(true)}>
+          <FormDialog
+            trigger={
+              <Button>
                 <Plus className="w-4 h-4 mr-2" />
                 Allocate Budget
               </Button>
-            </DialogTrigger>
-          </Dialog>
+            }
+            title="Allocate Driver Budget"
+            description="Create a new driver budget allocation"
+            schema={driverBudgetSchema}
+            fields={generateFieldsWithOptions(selectedAppUserId)}
+            defaultValues={getDefaultValues()}
+            onSubmit={handleSubmit}
+            onFieldChange={handleFieldChange}
+            submitLabel="Allocate Budget"
+            isLoading={loading}
+            mode="create"
+          />
         </div>
-        <Dialog>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Allocate Driver Budget</DialogTitle>
-            </DialogHeader>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="appUserId">App User *</Label>
-                <Select 
-                  value={formData.appUserId} 
-                  onValueChange={(value) => handleSelectChange('appUserId', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select app user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {appUsers.map((user) => (
-                      <SelectItem key={user._id} value={user._id}>
-                        {user.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label htmlFor="bankId">Bank Account *</Label>
-                <Select 
-                  value={formData.bankId} 
-                  onValueChange={(value) => handleSelectChange('bankId', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select bank account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(formData.appUserId ? getUserBanks(formData.appUserId) : getActiveBanks()).map((bank) => (
-                      <SelectItem key={bank._id} value={bank._id}>
-                        {bank.bankName} - {bank.accountNumber}
-                        <span className="text-green-600 ml-2">
-                          ({formatCurrency(bank.balance)})
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {formData.bankId && (
-                  <p className="text-sm text-gray-500 mt-1">
-                    Available balance: {formatCurrency(getSelectedBank()?.balance || 0)}
-                  </p>
-                )}
-              </div>
-              
-              <div>
-                <Label htmlFor="driverId">Driver *</Label>
-                <Select 
-                  value={formData.driverId} 
-                  onValueChange={(value) => handleSelectChange('driverId', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select driver" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {drivers.map((driver) => (
-                      <SelectItem key={driver._id} value={driver._id}>
-                        {driver.name}
-                        <span className="text-sm text-gray-500 ml-2">
-                          ({driver.mobileNo})
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label htmlFor="dailyBudgetAmount">Daily Budget Amount *</Label>
-                <Input
-                  id="dailyBudgetAmount"
-                  name="dailyBudgetAmount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={formData.dailyBudgetAmount}
-                  onChange={handleInputChange}
-                  placeholder="0.00"
-                  required
-                />
-                {carryForwardBudget > 0 && (
-                  <p className="text-sm mt-1 text-blue-600">
-                    Carry Forward: +{carryForwardBudget.toFixed(2)}
-                  </p>
-                )}
-                {formData.bankId && formData.dailyBudgetAmount > 0 && (
-                  <p className={`text-sm mt-1 ${
-                    formData.dailyBudgetAmount > (getSelectedBank()?.balance || 0) 
-                      ? 'text-red-500' 
-                      : 'text-green-600'
-                  }`}>
-                    {formData.dailyBudgetAmount > (getSelectedBank()?.balance || 0) 
-                      ? 'Insufficient balance' 
-                      : 'Budget amount is valid'
-                    }
-                  </p>
-                )}
-              </div>
-              
-              <div>
-                <Label htmlFor="date">Date *</Label>
-                <Input
-                  id="date"
-                  name="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  placeholder="Enter budget description (optional)"
-                  rows={3}
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="paymentType">Payment Type *</Label>
-                <Select 
-                  value={formData.paymentType} 
-                  onValueChange={(value) => handleSelectChange('paymentType', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select payment type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleDialogClose}>
-                  Cancel
-                </Button>
-                <Button 
-                  type="submit" 
-                  disabled={loading || formData.dailyBudgetAmount > (getSelectedBank()?.balance || 0)}
-                >
-                  {loading ? 'Allocating...' : 'Allocate Budget'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {/* Summary Cards */}

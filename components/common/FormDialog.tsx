@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -35,10 +36,11 @@ import {
 interface FormFieldConfig {
   name: string;
   label: string;
-  type: "text" | "select" | "number";
+  type: "text" | "select" | "number" | "date" | "textarea" | "info";
   placeholder?: string;
   options?: { value: string; label: string }[];
   required?: boolean;
+  value?: string | number; // For info fields to display dynamic values
 }
 
 interface FormDialogProps {
@@ -53,6 +55,7 @@ interface FormDialogProps {
   isLoading?: boolean;
   mode?: "create" | "edit";
   initialData?: Record<string, any>;
+  onFieldChange?: (fieldName: string, value: any, currentValues: Record<string, any>) => void;
 }
 
 export function FormDialog({
@@ -67,6 +70,7 @@ export function FormDialog({
   isLoading = false,
   mode = "create",
   initialData,
+  onFieldChange,
 }: FormDialogProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>("");
@@ -86,6 +90,30 @@ export function FormDialog({
       }
     }
   }, [initialData, mode, open, form, defaultValues]);
+
+  // Update form values when defaultValues change while dialog is open
+  useEffect(() => {
+    if (open && mode === "create") {
+      const currentValues = form.getValues();
+      const updatedValues = { ...currentValues };
+      
+      // Only update fields that have changed in defaultValues and are not already filled by user
+      Object.keys(defaultValues).forEach(key => {
+        if (defaultValues[key] !== currentValues[key]) {
+          // For vehicleId and startKm, always update to maintain sync
+          if (key === 'vehicleId' || key === 'startKm') {
+            updatedValues[key] = defaultValues[key];
+          }
+          // For other fields, only update if current value is empty/default
+          else if (!currentValues[key] || currentValues[key] === '' || currentValues[key] === 0) {
+            updatedValues[key] = defaultValues[key];
+          }
+        }
+      });
+      
+      form.reset(updatedValues);
+    }
+  }, [defaultValues, open, mode, form]);
 
   const handleSubmit: SubmitHandler<FieldValues> = async (data) => {
     try {
@@ -125,28 +153,47 @@ export function FormDialog({
 
         <Form {...form}>
           <form
+            key={JSON.stringify(fields.map(f => f.options?.length || 0))}
             onSubmit={form.handleSubmit(handleSubmit)}
             className="space-y-4"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {fields.map((field) => (
-                <FormField
-                  key={field.name}
-                  control={form.control}
-                  name={field.name}
-                  render={({ field: formField }) => (
-                    <FormItem
-                      className={
-                        field.type === "select" && field.name === "status"
-                          ? "md:col-span-2"
-                          : ""
-                      }
-                    >
-                      <FormLabel>{field.label}</FormLabel>
-                      <FormControl>
+                field.type === "info" ? (
+                  <div
+                    key={field.name}
+                    className="md:col-span-2 p-3 bg-blue-50 border border-blue-200 rounded-md"
+                  >
+                    <div className="text-sm font-medium text-blue-800 mb-1">
+                      {field.label}
+                    </div>
+                    <div className="text-sm text-blue-600">
+                      {field.value || "No information available"}
+                    </div>
+                  </div>
+                ) : (
+                  <FormField
+                    key={field.name}
+                    control={form.control}
+                    name={field.name}
+                    render={({ field: formField }) => (
+                      <FormItem
+                        className={
+                          field.type === "select" && field.name === "status"
+                            ? "md:col-span-2"
+                            : ""
+                        }
+                      >
+                        <FormLabel>{field.label}</FormLabel>
+                        <FormControl>
                         {field.type === "select" ? (
                           <Select
-                            onValueChange={formField.onChange}
+                            onValueChange={(value) => {
+                              formField.onChange(value);
+                              if (onFieldChange) {
+                                onFieldChange(field.name, value, form.getValues());
+                              }
+                            }}
                             value={formField.value}
                           >
                             <SelectTrigger>
@@ -163,6 +210,11 @@ export function FormDialog({
                               ))}
                             </SelectContent>
                           </Select>
+                        ) : field.type === "textarea" ? (
+                          <Textarea
+                            placeholder={field.placeholder}
+                            {...formField}
+                          />
                         ) : (
                           <Input
                             type={field.type}
@@ -180,10 +232,11 @@ export function FormDialog({
                           />
                         )}
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )
               ))}
             </div>
 
