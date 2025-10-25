@@ -7,17 +7,20 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ vehicleId: string }> }
 ) {
+  let vehicleId: string | undefined;
+  
   try {
     console.log('Connecting to database...');
     await connectDB();
     console.log('Database connected successfully');
     
     console.log('Extracting vehicleId from params...');
-    const { vehicleId } = await params;
+    const resolvedParams = await params;
+    vehicleId = resolvedParams?.vehicleId;
     console.log('VehicleId extracted:', vehicleId);
     
     if (!vehicleId) {
-      console.log('Vehicle ID is missing');
+      console.log('No vehicleId provided');
       return NextResponse.json(
         { error: 'Vehicle ID is required' },
         { status: 400 }
@@ -33,18 +36,17 @@ export async function GET(
       );
     }
     
+    console.log('Querying for latest fuel record...');
     // Find the latest fuel tracking record for the vehicle
-    console.log('Querying fuel tracking record for vehicleId:', vehicleId);
     const latestFuelRecord = await FuelTracking.findOne({ vehicleId })
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
       .populate('vehicleId', 'registrationNumber vehicleType vehicleWeight vehicleStatus')
       .sort({ createdAt: -1 });
     
-    console.log('Query completed. Record found:', !!latestFuelRecord);
+    console.log('Query completed, record found:', !!latestFuelRecord);
     
     if (!latestFuelRecord) {
-      console.log('No fuel tracking record found for vehicle:', vehicleId);
       return NextResponse.json(
         { error: 'No fuel tracking record found for this vehicle' },
         { status: 404 }
@@ -56,11 +58,10 @@ export async function GET(
       mileage: latestFuelRecord.truckAverage
     });
   } catch (error) {
-    console.error('Error fetching latest fuel tracking record:', error);
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
+    console.error('Error fetching latest fuel tracking record:', {
+      error: error instanceof Error ? error.message : error,
       stack: error instanceof Error ? error.stack : undefined,
-      vehicleId: vehicleId || 'undefined'
+      vehicleId: vehicleId || 'unknown'
     });
     return NextResponse.json(
       { 
