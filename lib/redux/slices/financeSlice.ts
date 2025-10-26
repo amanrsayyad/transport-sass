@@ -107,11 +107,22 @@ const initialState: FinanceState = {
 // Async thunks for Income
 export const fetchIncomes = createAsyncThunk(
   'finance/fetchIncomes',
-  async (params: { page?: number; limit?: number } = {}, { rejectWithValue }) => {
+  async (params: { 
+    page?: number; 
+    limit?: number; 
+    appUserId?: string; 
+    bankId?: string; 
+    startDate?: string; 
+    endDate?: string; 
+  } = {}, { rejectWithValue }) => {
     try {
       const queryParams = new URLSearchParams();
       if (params.page) queryParams.append('page', params.page.toString());
       if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.appUserId) queryParams.append('appUserId', params.appUserId);
+      if (params.bankId) queryParams.append('bankId', params.bankId);
+      if (params.startDate) queryParams.append('startDate', params.startDate);
+      if (params.endDate) queryParams.append('endDate', params.endDate);
       
       const response = await fetch(`/api/income?${queryParams}`);
       if (!response.ok) {
@@ -196,11 +207,22 @@ export const deleteIncome = createAsyncThunk(
 // Async thunks for Expense
 export const fetchExpenses = createAsyncThunk(
   'finance/fetchExpenses',
-  async (params: { page?: number; limit?: number } = {}, { rejectWithValue }) => {
+  async (params: { 
+    page?: number; 
+    limit?: number; 
+    appUserId?: string; 
+    bankId?: string; 
+    startDate?: string; 
+    endDate?: string; 
+  } = {}, { rejectWithValue }) => {
     try {
       const queryParams = new URLSearchParams();
       if (params.page) queryParams.append('page', params.page.toString());
       if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.appUserId) queryParams.append('appUserId', params.appUserId);
+      if (params.bankId) queryParams.append('bankId', params.bankId);
+      if (params.startDate) queryParams.append('startDate', params.startDate);
+      if (params.endDate) queryParams.append('endDate', params.endDate);
       
       const response = await fetch(`/api/expenses?${queryParams}`);
       if (!response.ok) {

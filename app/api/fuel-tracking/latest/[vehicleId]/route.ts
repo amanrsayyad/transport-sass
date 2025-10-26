@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import FuelTracking from '@/models/FuelTracking';
+import AppUser from '@/models/AppUser';
+import Bank from '@/models/Bank';
+import Vehicle from '@/models/Vehicle';
 
 // GET - Fetch latest fuel tracking record for a specific vehicle
 export async function GET(
@@ -10,17 +13,12 @@ export async function GET(
   let vehicleId: string | undefined;
   
   try {
-    console.log('Connecting to database...');
     await connectDB();
-    console.log('Database connected successfully');
     
-    console.log('Extracting vehicleId from params...');
     const resolvedParams = await params;
     vehicleId = resolvedParams?.vehicleId;
-    console.log('VehicleId extracted:', vehicleId);
     
     if (!vehicleId) {
-      console.log('No vehicleId provided');
       return NextResponse.json(
         { error: 'Vehicle ID is required' },
         { status: 400 }
@@ -29,22 +27,18 @@ export async function GET(
     
     // Validate vehicleId format (should be a valid ObjectId)
     if (!/^[0-9a-fA-F]{24}$/.test(vehicleId)) {
-      console.log('Invalid vehicleId format:', vehicleId);
       return NextResponse.json(
         { error: 'Invalid vehicle ID format' },
         { status: 400 }
       );
     }
     
-    console.log('Querying for latest fuel record...');
     // Find the latest fuel tracking record for the vehicle
     const latestFuelRecord = await FuelTracking.findOne({ vehicleId })
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
       .populate('vehicleId', 'registrationNumber vehicleType vehicleWeight vehicleStatus')
       .sort({ createdAt: -1 });
-    
-    console.log('Query completed, record found:', !!latestFuelRecord);
     
     if (!latestFuelRecord) {
       return NextResponse.json(
@@ -64,10 +58,7 @@ export async function GET(
       vehicleId: vehicleId || 'unknown'
     });
     return NextResponse.json(
-      { 
-        error: 'Failed to fetch latest fuel tracking record',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to fetch latest fuel tracking record' },
       { status: 500 }
     );
   }
