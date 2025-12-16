@@ -52,39 +52,26 @@ export function MaintenanceNotification() {
 
     try {
       setProcessingNotifications(prev => [...prev, maintenanceId]);
-      
-      // Call API to accept maintenance and handle all related operations
-      const response = await fetch(`/api/maintenance/${maintenanceId}/accept`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ categoryAmount: parseFloat(amount) }),
-      });
+      // Dispatch thunk to accept maintenance and process related operations
+      await dispatch(
+        acceptMaintenanceNotification({
+          maintenanceId,
+          categoryAmount: parseFloat(amount),
+        })
+      ).unwrap();
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Maintenance accepted successfully:', result);
-        
-        // Update Redux state
-        await dispatch(acceptMaintenanceNotification(maintenanceId)).unwrap();
-        
-        // Remove from dismissed list if it was there
-        setDismissedNotifications(prev => prev.filter(id => id !== maintenanceId));
-        
-        // Clear amount input and hide it
-        setAmounts(prev => ({ ...prev, [maintenanceId]: '' }));
-        setShowAmountInput(null);
-        
-        // Show success message (you can add a toast notification here)
-        alert(`Maintenance completed successfully! 
-        - Bank balance updated
-        - Expense record created
-        - Transaction record generated`);
-      } else {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to accept maintenance');
-      }
+      // Remove from dismissed list if it was there
+      setDismissedNotifications(prev => prev.filter(id => id !== maintenanceId));
+      
+      // Clear amount input and hide it
+      setAmounts(prev => ({ ...prev, [maintenanceId]: '' }));
+      setShowAmountInput(null);
+      
+      // Show success message (you can add a toast notification here)
+      alert(`Maintenance completed successfully! 
+      - Bank balance updated
+      - Expense record created
+      - Transaction record generated`);
     } catch (error) {
       console.error("Failed to accept maintenance notification:", error);
       alert(`Failed to accept maintenance: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -101,31 +88,14 @@ export function MaintenanceNotification() {
   const handleDeclineNotification = async (maintenanceId: string) => {
     try {
       setProcessingNotifications(prev => [...prev, maintenanceId]);
+      // Dispatch thunk to decline notification
+      await dispatch(declineMaintenanceNotification(maintenanceId)).unwrap();
       
-      // Call API to decline maintenance
-      const response = await fetch(`/api/maintenance/${maintenanceId}/decline`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Maintenance declined successfully:', result);
-        
-        // Update Redux state
-        await dispatch(declineMaintenanceNotification(maintenanceId)).unwrap();
-        
-        // Add to dismissed list to hide from current view
-        setDismissedNotifications(prev => [...prev, maintenanceId]);
-        
-        // Refresh notifications to show updated status
-        dispatch(fetchMaintenanceNotifications());
-      } else {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to decline maintenance');
-      }
+      // Add to dismissed list to hide from current view
+      setDismissedNotifications(prev => [...prev, maintenanceId]);
+      
+      // Refresh notifications to show updated status
+      dispatch(fetchMaintenanceNotifications());
     } catch (error) {
       console.error("Failed to decline maintenance notification:", error);
       alert(`Failed to decline maintenance: ${error instanceof Error ? error.message : 'Unknown error'}`);

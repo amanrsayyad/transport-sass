@@ -11,6 +11,7 @@ import {
   clearError as clearInvoiceError,
   InvoiceCreateData,
   InvoiceRow,
+  bulkUpdateInvoiceStatus,
 } from "@/lib/redux/slices/invoiceSlice";
 import {
   fetchCustomers,
@@ -19,12 +20,14 @@ import {
   clearError as clearCustomerError,
 } from "@/lib/redux/slices/customerSlice";
 import { fetchVehicles } from "@/lib/redux/slices/vehicleSlice";
+import { fetchBanks } from "@/lib/redux/slices/bankSlice";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import Pagination from "@/components/common/Pagination";
 import { InvoicePDF } from "@/components/invoices/InvoicePDF";
 import { generateInvoicePDF } from "@/lib/utils/pdfGenerator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -58,9 +61,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Plus, FileText, Download, Edit, Trash2, Eye } from "lucide-react";
+import { Plus, FileText, Download, Edit, Trash2, Eye, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { DownloadButton } from "@/components/common/DownloadButton";
+import { fetchAppUsers } from "@/lib/redux/slices/appUserSlice";
 
 interface InvoiceFormData extends InvoiceCreateData {
   id?: string;
@@ -73,11 +77,37 @@ const InvoicesPage = () => {
   );
   const { customers } = useSelector((state: RootState) => state.customers);
   const { vehicles } = useSelector((state: RootState) => state.vehicles);
+  const { banks } = useSelector((state: RootState) => state.banks);
+  const { appUsers, currentAppUser } = useSelector(
+    (state: RootState) => state.appUsers
+  );
+
+  const effectiveAppUser =
+    currentAppUser ??
+    (appUsers.find((u) => u.status === "active") ?? appUsers[0] ?? null);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
   const [previewInvoice, setPreviewInvoice] = useState<any>(null);
+  const matchedCustomer = previewInvoice
+    ? customers.find(
+        (c) =>
+          c.customerName === previewInvoice.customerName ||
+          c.companyName === previewInvoice.customerName
+      )
+    : undefined;
+  // Resolve App User specifically for the previewed invoice (prefer invoice.appUserId)
+  const resolveId = (idLike: any): string | null => {
+    if (!idLike) return null;
+    if (typeof idLike === 'string') return idLike;
+    if (typeof idLike === 'object' && idLike._id) return idLike._id as string;
+    return null;
+  };
+  const previewAppUserId = resolveId(previewInvoice?.appUserId);
+  const previewEffectiveAppUser = previewAppUserId
+    ? (appUsers.find((u: any) => u._id === previewAppUserId) ?? effectiveAppUser)
+    : effectiveAppUser;
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
     null
   );
@@ -86,7 +116,14 @@ const InvoicesPage = () => {
     status: "all",
     customerName: "all",
     lrNo: "",
+    fromDate: "",
+    toDate: "",
   });
+
+  // Track selected invoices for row checkboxes and select-all
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [selectedBankId, setSelectedBankId] = useState<string>("");
+  const [selectedBulkAppUserId, setSelectedBulkAppUserId] = useState<string>("");
 
   const [formData, setFormData] = useState<InvoiceFormData>({
     date: new Date().toISOString().split("T")[0],
@@ -99,6 +136,8 @@ const InvoicesPage = () => {
     consignee: "",
     lrNo: "",
     remarks: "",
+    // Optional tax percentage; left undefined by default
+    // taxPercent: undefined,
     status: "Unpaid",
     rows: [
       {
@@ -117,6 +156,9 @@ const InvoicesPage = () => {
     dispatch(fetchInvoices({ page: pagination.page, limit: pagination.limit }));
     dispatch(fetchCustomers());
     dispatch(fetchVehicles());
+    dispatch(fetchBanks());
+    // Ensure app users are available for InvoicePDF rendering
+    dispatch(fetchAppUsers());
   }, [dispatch, pagination.page, pagination.limit]);
 
   const handlePageChange = (page: number) => {
@@ -125,6 +167,85 @@ const InvoicesPage = () => {
 
   const handleLimitChange = (limit: number) => {
     dispatch(fetchInvoices({ page: 1, limit }));
+  };
+
+  // Toggle selection for a single invoice row
+  const handleToggleSelectRow = (id: string, checked: boolean) => {
+    setSelectedInvoiceIds((prev) => {
+      const exists = prev.includes(id);
+      if (checked) {
+        return exists ? prev : [...prev, id];
+      }
+      return prev.filter((x) => x !== id);
+    });
+  };
+
+  // Toggle selection for all visible invoices
+  const handleToggleSelectAll = (checked: boolean) => {
+    const visibleIds = invoices.map((i: any) => i._id);
+    setSelectedInvoiceIds((prev) => {
+      if (checked) {
+        const merged = new Set(prev);
+        visibleIds.forEach((id) => merged.add(id));
+        return Array.from(merged);
+      }
+      // Uncheck removes only visible ones, keeps other selections
+      return prev.filter((id) => !visibleIds.includes(id));
+    });
+  };
+
+  // Default/validated bank selection bound to selected App User
+  useEffect(() => {
+    const forUser = (banks || []).filter(
+      (b: any) => b?.appUserId?._id === selectedBulkAppUserId
+    );
+    // If user not selected, clear bank selection
+    if (!selectedBulkAppUserId) {
+      if (selectedBankId) setSelectedBankId("");
+      return;
+    }
+    // Keep current bank if it belongs to the selected user
+    if (selectedBankId && forUser.some((b) => b._id === selectedBankId)) {
+      return;
+    }
+    if (forUser.length > 0) {
+      const active = forUser.find((b: any) => b.isActive);
+      setSelectedBankId(active?._id || forUser[0]._id);
+    } else {
+      setSelectedBankId("");
+    }
+  }, [banks, selectedBulkAppUserId, selectedBankId]);
+
+  const handleBulkSetStatus = async (newStatus: "Paid" | "Unpaid") => {
+    if (selectedInvoiceIds.length === 0) {
+      toast.error("Please select at least one invoice");
+      return;
+    }
+    try {
+      if (
+        newStatus === "Paid" && (!selectedBulkAppUserId || !selectedBankId)
+      ) {
+        toast.error("Select an App User and a bank to credit income");
+        return;
+      }
+      const appUserId = selectedBulkAppUserId || effectiveAppUser?._id;
+      const res = await dispatch(
+        bulkUpdateInvoiceStatus({
+          invoiceIds: selectedInvoiceIds,
+          status: newStatus,
+          bankId: newStatus === "Paid" ? selectedBankId : undefined,
+          appUserId: newStatus === "Paid" ? appUserId : undefined,
+          category: "Invoice Payment",
+          description: undefined,
+          date: new Date().toISOString(),
+        })
+      ).unwrap();
+      toast.success(`Updated ${res.updatedCount} invoice(s) to ${newStatus}`);
+      setSelectedInvoiceIds([]);
+      dispatch(fetchInvoices({ page: pagination.page, limit: pagination.limit }));
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update invoice statuses");
+    }
   };
 
   useEffect(() => {
@@ -267,16 +388,23 @@ const InvoicesPage = () => {
     }
 
     try {
+      // Prepare payload; coerce taxPercent to number if provided
+      const payload: any = { ...formData };
+      if (payload.taxPercent === "" || payload.taxPercent === undefined || payload.taxPercent === null) {
+        delete payload.taxPercent;
+      } else {
+        payload.taxPercent = Number(payload.taxPercent);
+      }
       if (editingInvoice) {
         await dispatch(
           updateInvoice({
             id: editingInvoice._id,
-            invoiceData: formData,
+            invoiceData: payload,
           })
         ).unwrap();
         toast.success("Invoice updated successfully");
       } else {
-        await dispatch(createInvoice(formData)).unwrap();
+        await dispatch(createInvoice(payload)).unwrap();
         toast.success("Invoice created successfully");
       }
 
@@ -359,6 +487,12 @@ const InvoicesPage = () => {
     }
   };
 
+  // Print Invoice: direct PDF download using the same generator
+  const handlePrintInvoice = async () => {
+    // Reuse the same flow as Download PDF for a direct download
+    await handleDownloadPDF();
+  };
+
   const handleSheetClose = () => {
     setIsSheetOpen(false);
     setEditingInvoice(null);
@@ -393,6 +527,24 @@ const InvoicesPage = () => {
   const handleFilterChange = (field: string, value: string) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
     dispatch(fetchInvoices({ ...filters, [field]: value }));
+  };
+
+  const handleResetFilters = () => {
+    const defaultFilters = {
+      status: "all",
+      customerName: "all",
+      lrNo: "",
+      fromDate: "",
+      toDate: "",
+    };
+    setFilters(defaultFilters);
+    dispatch(
+      fetchInvoices({
+        page: 1,
+        limit: pagination.limit,
+        ...defaultFilters,
+      })
+    );
   };
 
   const formatCurrency = (amount: number) => {
@@ -815,6 +967,23 @@ const InvoicesPage = () => {
                 </div>
               </div>
 
+              {/* Tax Percentage (Optional) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="taxPercent">Tax Percentage (%)</Label>
+                  <Input
+                    id="taxPercent"
+                    name="taxPercent"
+                    type="number"
+                    value={(formData as any).taxPercent ?? ""}
+                    onChange={handleInputChange}
+                    placeholder="e.g. 18"
+                    min={0}
+                    step={0.01}
+                  />
+                </div>
+              </div>
+
               <div className="flex justify-end space-x-2 pt-4">
                 <Button
                   type="button"
@@ -896,7 +1065,7 @@ const InvoicesPage = () => {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <Label htmlFor="statusFilter">Status</Label>
               <Select
@@ -946,6 +1115,31 @@ const InvoicesPage = () => {
                 placeholder="Search by LR number"
               />
             </div>
+
+            <div>
+              <Label htmlFor="fromDateFilter">From Date</Label>
+              <Input
+                id="fromDateFilter"
+                type="date"
+                value={filters.fromDate}
+                onChange={(e) => handleFilterChange("fromDate", e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="toDateFilter">To Date</Label>
+              <Input
+                id="toDateFilter"
+                type="date"
+                value={filters.toDate}
+                onChange={(e) => handleFilterChange("toDate", e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end mt-4">
+            <Button variant="secondary" onClick={handleResetFilters}>
+              Reset Filters
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -964,9 +1158,92 @@ const InvoicesPage = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
+              {/* Bulk Actions Toolbar */}
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <div className="text-sm text-muted-foreground">
+                  Selected: {selectedInvoiceIds.length}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="bulkAppUser">App User</Label>
+                    <Select
+                      value={selectedBulkAppUserId}
+                      onValueChange={(v) => setSelectedBulkAppUserId(v)}
+                    >
+                      <SelectTrigger id="bulkAppUser" className="w-56">
+                        <SelectValue placeholder="Select app user" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {appUsers?.map((u: any) => (
+                          <SelectItem key={u._id} value={u._id}>
+                            {u.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="bulkBank">Bank</Label>
+                    <Select
+                      value={selectedBankId}
+                      onValueChange={(v) => setSelectedBankId(v)}
+                      disabled={!selectedBulkAppUserId}
+                    >
+                      <SelectTrigger id="bulkBank" className="w-56">
+                        <SelectValue placeholder="Select bank" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {banks
+                          ?.filter(
+                            (b: any) => b?.appUserId?._id === selectedBulkAppUserId
+                          )
+                          .map((b: any) => (
+                            <SelectItem key={b._id} value={b._id}>
+                              {b.bankName} ({b.accountNumber})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      disabled={selectedInvoiceIds.length === 0}
+                      onClick={() => handleBulkSetStatus("Unpaid")}
+                    >
+                      Set Unpaid
+                    </Button>
+                    <Button
+                      variant="default"
+                      disabled={
+                        selectedInvoiceIds.length === 0 ||
+                        !selectedBulkAppUserId ||
+                        !selectedBankId
+                      }
+                      onClick={() => handleBulkSetStatus("Paid")}
+                    >
+                      Set Paid
+                    </Button>
+                  </div>
+                </div>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>
+                      <Checkbox
+                        checked={
+                          invoices.length > 0 &&
+                          invoices.every((i: any) =>
+                            selectedInvoiceIds.includes(i._id)
+                          )
+                        }
+                        onCheckedChange={(checked) =>
+                          handleToggleSelectAll(Boolean(checked))
+                        }
+                        aria-label="Select all invoices"
+                      />
+                    </TableHead>
                     <TableHead>LR No</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Customer</TableHead>
@@ -979,6 +1256,15 @@ const InvoicesPage = () => {
                 <TableBody>
                   {invoices.map((invoice) => (
                     <TableRow key={invoice._id}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedInvoiceIds.includes(invoice._id)}
+                          onCheckedChange={(checked) =>
+                            handleToggleSelectRow(invoice._id, Boolean(checked))
+                          }
+                          aria-label={`Select invoice ${invoice.lrNo}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         {invoice.lrNo}
                       </TableCell>
@@ -993,9 +1279,29 @@ const InvoicesPage = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium">
-                          {formatCurrency(invoice.total)}
-                        </span>
+                        <div className="text-sm">
+                          <div className="font-medium">
+                            {formatCurrency(invoice.total)}
+                          </div>
+                          <div className="text-gray-500">
+                            Adv: {formatCurrency(
+                              typeof invoice.advanceAmount === "number"
+                                ? invoice.advanceAmount
+                                : 0
+                            )}
+                          </div>
+                          <div className="text-gray-500">
+                            Remaining: {formatCurrency(
+                              typeof invoice.remainingAmount === "number"
+                                ? invoice.remainingAmount
+                                : Math.max(
+                                    0,
+                                    (invoice.total || 0) -
+                                      (invoice.advanceAmount || 0)
+                                  )
+                            )}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={getStatusColor(invoice.status)}>
@@ -1061,13 +1367,19 @@ const InvoicesPage = () => {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-bold text-red-600">
-                    RDS TRANSPORT
+                    {previewEffectiveAppUser?.name || "_________"}
                   </h2>
                   <p className="text-sm">
                     (Transport Contractor, Commission Agent)
                   </p>
                   <p className="text-sm">
-                    Near Bombay Restaurant, Gorakhpur-Pirwadi, NH-4, Satara.
+                    <strong>GSTIN:</strong> {previewEffectiveAppUser?.gstin || "_________"}
+                  </p>
+                  <p className="text-sm">
+                    <strong>Address:</strong>{" "}
+                    {previewEffectiveAppUser?.address
+                      ? previewEffectiveAppUser.address
+                      : "Near Bombay Restaurant, Gorakhpur-Pirwadi, NH-4, Satara."}
                   </p>
                   <p className="text-sm">Email: rdsTransport5192@gmail.com</p>
                   <p className="text-sm">9604047861 / 9765000068</p>
@@ -1096,6 +1408,12 @@ const InvoicesPage = () => {
               <div className="mb-6">
                 <p>
                   <strong>Company Name:</strong> {previewInvoice.customerName}
+                </p>
+                <p>
+                  <strong>Customer GSTIN:</strong> {matchedCustomer?.gstin || "_________"}
+                </p>
+                <p>
+                  <strong>Customer Address:</strong> {matchedCustomer?.address || "_________"}
                 </p>
                 <p>
                   <strong>Consignor:</strong> {previewInvoice.consignor}
@@ -1138,8 +1456,44 @@ const InvoicesPage = () => {
 
               {/* Total */}
               <div className="mb-6">
+                {(() => {
+                  const baseTotal = (previewInvoice.rows || []).reduce(
+                    (sum: number, row: any) => sum + (row?.total || 0),
+                    0
+                  );
+                  const percent =
+                    typeof previewInvoice.taxPercent === "number"
+                      ? previewInvoice.taxPercent
+                      : 0;
+                  const taxAmount =
+                    typeof previewInvoice.taxAmount === "number"
+                      ? previewInvoice.taxAmount
+                      : percent > 0
+                        ? (baseTotal * percent) / 100
+                        : 0;
+                  return (
+                    <div className="mb-2">
+                      <p className="text-sm text-gray-600">
+                        TAX PERCENTAGE: {percent}%
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        TAX AMOUNT: ₹ {taxAmount}
+                      </p>
+                    </div>
+                  );
+                })()}
                 <p>
                   <strong>TOTAL: ₹ {previewInvoice.total}</strong>
+                </p>
+                <p className="text-sm text-gray-600">
+                  ADVANCE: ₹ {typeof previewInvoice.advanceAmount === "number" ? previewInvoice.advanceAmount : 0}
+                </p>
+                <p className="text-sm text-gray-600">
+                  REMAINING: ₹ {
+                    typeof previewInvoice.remainingAmount === "number"
+                      ? previewInvoice.remainingAmount
+                      : Math.max(0, (previewInvoice.total || 0) - (previewInvoice.advanceAmount || 0))
+                  }
                 </p>
               </div>
 
@@ -1158,12 +1512,18 @@ const InvoicesPage = () => {
                 <div className="text-right">
                   <p>Subject to Satara Jurisdiction</p>
                   <p className="mt-8">
-                    <strong>FOR RDS TRANSPORT</strong>
+                    <strong>
+                      FOR {previewEffectiveAppUser?.name || "_________"}
+                    </strong>
                   </p>
                 </div>
               </div>
 
-              <div className="flex justify-end mt-6">
+              <div className="flex justify-end gap-2 mt-6">
+                <Button variant="outline" onClick={handlePrintInvoice}>
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print Invoice
+                </Button>
                 <Button onClick={handleDownloadPDF}>
                   <Download className="w-4 h-4 mr-2" />
                   Download PDF

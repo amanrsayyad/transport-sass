@@ -71,6 +71,16 @@ const MODULE_CONFIGS: Record<string, ModuleConfig> = {
     ],
     sheetName: 'Trips Data'
   },
+  'vehicle-trip-report': {
+    model: Trip,
+    populate: ['vehicleId'],
+    fields: [
+      { key: 'date', label: 'Date', type: 'date' },
+      { key: 'vehicleNumber', label: 'Vehicle Number', type: 'text' },
+      { key: 'remainingAmount', label: 'Remaining Amount', type: 'currency' },
+    ],
+    sheetName: 'Vehicle Trip Report'
+  },
   customers: {
     model: Customer,
     fields: [
@@ -307,6 +317,31 @@ function formatValue(value: any, type?: string): string {
   }
 }
 
+// Helper to format a Date as local YYYY-MM-DD (avoids UTC shifts)
+function formatYMDLocal(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Parse date string strictly as local date (start of day)
+function parseLocalDateParam(input: string | null): Date | null {
+  if (!input) return null;
+  // ISO YYYY-MM-DD from <input type="date">
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+    const [y, m, d] = input.split('-').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+  // DD/MM/YYYY manual entry support
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(input)) {
+    const [d, m, y] = input.split('/').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+  const d = new Date(input);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { module: string } }
@@ -327,9 +362,116 @@ export async function GET(
     }
     
     const config = MODULE_CONFIGS[module];
+
+    // Build optional filters based on module
+    const buildFilter = (moduleName: string, sp: URLSearchParams) => {
+      const filter: any = {};
+      switch (moduleName) {
+        case 'trips': {
+          const status = sp.get('status');
+          const driverId = sp.get('driverId');
+          const vehicleId = sp.get('vehicleId');
+          const fromDate = sp.get('fromDate');
+          const toDate = sp.get('toDate');
+
+          if (status && status !== 'all') {
+            filter.status = status;
+          }
+          if (driverId && driverId !== 'all') {
+            filter.driverId = driverId;
+          }
+          if (vehicleId && vehicleId !== 'all') {
+            filter.vehicleId = vehicleId;
+          }
+
+          // Align date filtering with invoices and trips API: use primary trip date
+          if (fromDate || toDate) {
+            const start = parseLocalDateParam(fromDate);
+            const endStart = parseLocalDateParam(toDate);
+            const range: any = {};
+            if (start) range.$gte = start;
+            if (endStart) {
+              const end = new Date(endStart.getFullYear(), endStart.getMonth(), endStart.getDate(), 23, 59, 59, 999);
+              range.$lte = end;
+            }
+            if (Object.keys(range).length) {
+              filter['date.0'] = range;
+            }
+          }
+          return filter;
+        }
+        case 'vehicle-trip-report': {
+          const vehicleId = sp.get('vehicleId');
+          const fromDate = sp.get('fromDate');
+          const toDate = sp.get('toDate');
+
+          if (vehicleId && vehicleId !== 'all') {
+            filter.vehicleId = vehicleId;
+          }
+          if (fromDate || toDate) {
+            const start = parseLocalDateParam(fromDate);
+            const endStart = parseLocalDateParam(toDate);
+            const range: any = {};
+            if (start) range.$gte = start;
+            if (endStart) {
+              const end = new Date(endStart.getFullYear(), endStart.getMonth(), endStart.getDate(), 23, 59, 59, 999);
+              range.$lte = end;
+            }
+            if (Object.keys(range).length) {
+              filter['date.0'] = range;
+            }
+          }
+          return filter;
+        }
+        case 'invoices': {
+          const status = sp.get('status');
+          const customerName = sp.get('customerName');
+          const lrNo = sp.get('lrNo');
+          const fromDate = sp.get('fromDate');
+          const toDate = sp.get('toDate');
+          if (status && status !== 'all') {
+            filter.status = status;
+          }
+          if (customerName && customerName !== 'all') {
+            filter.customerName = { $regex: customerName, $options: 'i' };
+          }
+          if (lrNo) {
+            filter.lrNo = { $regex: lrNo, $options: 'i' };
+          }
+          if (fromDate || toDate) {
+            filter.date = {};
+            if (fromDate) filter.date.$gte = new Date(fromDate);
+            if (toDate) {
+              const end = new Date(toDate);
+              end.setHours(23, 59, 59, 999);
+              filter.date.$lte = end;
+            }
+          }
+          return filter;
+        }
+        case 'transactions': {
+          const type = sp.get('type');
+          const fromDate = sp.get('fromDate');
+          const toDate = sp.get('toDate');
+          if (type && type !== 'all') {
+            filter.type = type;
+          }
+          if (fromDate || toDate) {
+            filter.date = {};
+            if (fromDate) filter.date.$gte = new Date(fromDate);
+            if (toDate) filter.date.$lte = new Date(toDate);
+          }
+          return filter;
+        }
+        default:
+          return filter;
+      }
+    };
+
+    const filter = buildFilter(module, searchParams);
     
-    // Fetch all data for the module
-    let query = config.model.find();
+    // Fetch data for the module with filters if any
+    let query = config.model.find(filter);
     
     if (config.populate) {
       config.populate.forEach(field => {
@@ -339,9 +481,18 @@ export async function GET(
     
     const data = await query.sort({ createdAt: -1 });
     
+    // Helper: ensure Web-compatible ArrayBuffer body
+    const toArrayBuffer = (bytes: ArrayBuffer | Uint8Array): ArrayBuffer => {
+      if (bytes instanceof ArrayBuffer) return bytes;
+      const ab = new ArrayBuffer(bytes.byteLength);
+      new Uint8Array(ab).set(bytes);
+      return ab;
+    };
+
     if (format === 'excel') {
-      const excelBuffer = await generateModuleExcelReport(data, config, module);
-      return new NextResponse(excelBuffer, {
+      const excelData = await generateModuleExcelReport(data, config, module);
+      const excelArrayBuffer = toArrayBuffer(excelData);
+      return new NextResponse(excelArrayBuffer, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': `attachment; filename="${module}-data-${new Date().toISOString().split('T')[0]}.xlsx"`
@@ -349,8 +500,9 @@ export async function GET(
       });
     } else {
       // PDF format
-      const pdfBuffer = await generateModulePDFReport(data, config, module);
-      return new NextResponse(pdfBuffer, {
+      const pdfData = await generateModulePDFReport(data, config, module);
+      const pdfArrayBuffer = toArrayBuffer(pdfData);
+      return new NextResponse(pdfArrayBuffer, {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename="${module}-data-${new Date().toISOString().split('T')[0]}.pdf"`
@@ -371,50 +523,102 @@ async function generateModuleExcelReport(
   data: any[],
   config: ModuleConfig,
   moduleName: string
-): Promise<Buffer> {
+): Promise<ArrayBuffer | Uint8Array> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(config.sheetName);
-  
-  // Add headers
+
+  // Special pivot formatting for vehicle trip report
+  if (moduleName === 'vehicle-trip-report') {
+    // Collect unique vehicle numbers
+    const vehicleNumbers = Array.from(new Set(
+      (data || []).map((t: any) => t?.vehicleNumber).filter(Boolean)
+    )).sort();
+
+    // Group by primary date (date.0)
+    const rowsByDate: Record<string, { date: Date; values: Record<string, number> }> = {};
+    (data || []).forEach((t: any) => {
+      const dateVal = Array.isArray(t?.date) ? t.date[0] : t?.date; // start date
+      const d = dateVal ? new Date(dateVal) : null;
+      const key = d ? formatYMDLocal(d) : 'Unknown';
+      const veh = t?.vehicleNumber || 'Unknown';
+      const rem = Number(t?.remainingAmount || 0);
+      if (!rowsByDate[key]) {
+        rowsByDate[key] = { date: d || new Date(), values: {} };
+      }
+      rowsByDate[key].values[veh] = (rowsByDate[key].values[veh] || 0) + rem;
+    });
+
+    // Header: Date + each vehicle (no Total Remaining column)
+    const header = ['Date', ...vehicleNumbers];
+    worksheet.addRow(header);
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+    // Body rows sorted by date
+    const dateKeys = Object.keys(rowsByDate).sort();
+    dateKeys.forEach(key => {
+      const { date, values } = rowsByDate[key];
+      const rowVals: (string | number | Date)[] = [];
+      rowVals.push(date ? formatYMDLocal(date) : key);
+      vehicleNumbers.forEach(v => {
+        const val = Number(values[v] || 0);
+        rowVals.push(Number(val.toFixed(2))); // two decimals
+      });
+      worksheet.addRow(rowVals);
+    });
+
+    // Add Grand Total row: per-vehicle sums (no overall grand-total column)
+    const totalsRow: (string | number)[] = ['Grand Total'];
+    vehicleNumbers.forEach(v => {
+      let sum = 0;
+      dateKeys.forEach(key => { sum += Number(rowsByDate[key].values[v] || 0); });
+      totalsRow.push(Number(sum.toFixed(2)));
+    });
+    worksheet.addRow(totalsRow);
+
+    // Column widths
+    worksheet.columns.forEach((column, idx) => {
+      column.width = idx === 0 ? 14 : 18;
+    });
+
+    worksheet.addRow([]);
+    worksheet.addRow([`Total records: ${data.length}`]);
+    worksheet.addRow([`Generated on: ${new Date().toLocaleString()}`]);
+
+      return await workbook.xlsx.writeBuffer();
+  }
+
+  // Default tabular output
   const headers = config.fields.map(field => field.label);
   worksheet.addRow(headers);
-  
-  // Style headers
+
   const headerRow = worksheet.getRow(1);
   headerRow.font = { bold: true };
-  headerRow.fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFE0E0E0' }
-  };
-  
-  // Add data rows
-  data.forEach(item => {
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+  (data || []).forEach(item => {
     const row = config.fields.map(field => {
       const value = getNestedValue(item, field.key);
       return formatValue(value, field.type);
     });
     worksheet.addRow(row);
   });
-  
-  // Auto-fit columns
-  worksheet.columns.forEach(column => {
-    column.width = 15;
-  });
-  
-  // Add summary
+
+  worksheet.columns.forEach(column => { column.width = 15; });
+
   worksheet.addRow([]);
   worksheet.addRow([`Total ${moduleName} records: ${data.length}`]);
   worksheet.addRow([`Generated on: ${new Date().toLocaleString()}`]);
-  
-  return await workbook.xlsx.writeBuffer() as Buffer;
+
+  return await workbook.xlsx.writeBuffer();
 }
 
 async function generateModulePDFReport(
   data: any[],
   config: ModuleConfig,
   moduleName: string
-): Promise<Buffer> {
+): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
@@ -423,33 +627,100 @@ async function generateModulePDFReport(
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => {
         const pdfBuffer = Buffer.concat(buffers);
-        resolve(pdfBuffer);
+        // Convert Node Buffer to Uint8Array for BodyInit compatibility
+        const pdfBytes = new Uint8Array(pdfBuffer);
+        resolve(pdfBytes);
       });
       
-      // Add title
-      doc.fontSize(20).text(config.sheetName, { align: 'center' });
+      // Title and metadata
+      doc.fontSize(20).text(config.sheetName, 50, doc.y, { align: 'center', width: doc.page.width - 100 });
       doc.moveDown();
-      
-      // Add metadata
       doc.fontSize(12)
-         .text(`Generated on: ${new Date().toLocaleString()}`, { align: 'left' })
-         .text(`Total records: ${data.length}`, { align: 'left' });
+         .text(`Generated on: ${new Date().toLocaleString()}`, 50, doc.y, { align: 'left', width: doc.page.width - 100 })
+         .text(`Total records: ${data.length}`, 50, doc.y, { align: 'left', width: doc.page.width - 100 });
       doc.moveDown();
-      
+
       if (data.length === 0) {
-        doc.text('No data available', { align: 'center' });
+        doc.text('No data available', 50, doc.y, { align: 'center', width: doc.page.width - 100 });
         doc.end();
         return;
       }
-      
-      // Calculate column widths
+
+      // Special pivot formatting for vehicle-trip-report
+      if (moduleName === 'vehicle-trip-report') {
+        const vehicleNumbers = Array.from(new Set(
+          (data || []).map((t: any) => t?.vehicleNumber).filter(Boolean)
+        )).sort();
+        const rowsByDate: Record<string, { date: Date; values: Record<string, number> }> = {};
+        (data || []).forEach((t: any) => {
+          const dateVal = Array.isArray(t?.date) ? t.date[0] : t?.date;
+          const d = dateVal ? new Date(dateVal) : null;
+          const key = d ? formatYMDLocal(d) : 'Unknown';
+          const veh = t?.vehicleNumber || 'Unknown';
+          const rem = Number(t?.remainingAmount || 0);
+          if (!rowsByDate[key]) {
+            rowsByDate[key] = { date: d || new Date(), values: {} };
+          }
+          rowsByDate[key].values[veh] = (rowsByDate[key].values[veh] || 0) + rem;
+        });
+
+        const headers = ['Date', ...vehicleNumbers];
+        const pageWidth = doc.page.width - 100; // margins
+        const columnWidth = Math.min(pageWidth / headers.length, 100);
+
+        let y = doc.y;
+        doc.fontSize(10).fillColor('black');
+        headers.forEach((label, i) => {
+          const x = 50 + (i * columnWidth);
+          doc.rect(x, y, columnWidth, 20).fillAndStroke('#f0f0f0', '#000000').fillColor('black')
+             .text(label, x + 5, y + 5, { width: columnWidth - 10, height: 20, ellipsis: true });
+        });
+        y += 20;
+
+        const dateKeys = Object.keys(rowsByDate).sort();
+        dateKeys.forEach((key, rowIndex) => {
+          if (y > doc.page.height - 100) { doc.addPage(); y = 50; }
+          const fillColor = rowIndex % 2 === 0 ? '#ffffff' : '#f9f9f9';
+      const { date, values } = rowsByDate[key];
+      const rowVals: (string | number)[] = [];
+      rowVals.push(formatYMDLocal(date || new Date()));
+          vehicleNumbers.forEach(v => {
+            const val = Number(values[v] || 0);
+            rowVals.push(Number(val.toFixed(2)));
+          });
+
+          rowVals.forEach((val, i) => {
+            const x = 50 + (i * columnWidth);
+            doc.rect(x, y, columnWidth, 20).fillAndStroke(fillColor, '#cccccc').fillColor('black')
+               .text(String(val), x + 5, y + 5, { width: columnWidth - 10, height: 20, ellipsis: true });
+          });
+          y += 20;
+        });
+
+        // Grand Total row
+        if (y > doc.page.height - 100) { doc.addPage(); y = 50; }
+        const totals: (string | number)[] = ['Grand Total'];
+        vehicleNumbers.forEach(v => {
+          const sum = dateKeys.reduce((s, key) => s + Number(rowsByDate[key].values[v] || 0), 0);
+          totals.push(Number(sum.toFixed(2)));
+        });
+        totals.forEach((val, i) => {
+          const x = 50 + (i * columnWidth);
+          doc.rect(x, y, columnWidth, 20).fillAndStroke('#e8f5e9', '#4caf50').fillColor('black')
+             .text(String(val), x + 5, y + 5, { width: columnWidth - 10, height: 20, ellipsis: true });
+        });
+        y += 20;
+        
+        // End after totals
+        doc.end();
+        return;
+      }
+
+      // Default tabular output
       const pageWidth = doc.page.width - 100; // Account for margins
       const columnWidth = Math.min(pageWidth / config.fields.length, 120);
-      
-      // Add table headers
       let yPosition = doc.y;
       doc.fontSize(10).fillColor('black');
-      
       config.fields.forEach((field, index) => {
         const xPosition = 50 + (index * columnWidth);
         doc.rect(xPosition, yPosition, columnWidth, 20)
@@ -461,24 +732,14 @@ async function generateModulePDFReport(
              ellipsis: true
            });
       });
-      
       yPosition += 20;
-      
-      // Add data rows
       data.forEach((item, rowIndex) => {
-        // Check if we need a new page
-        if (yPosition > doc.page.height - 100) {
-          doc.addPage();
-          yPosition = 50;
-        }
-        
+        if (yPosition > doc.page.height - 100) { doc.addPage(); yPosition = 50; }
         const fillColor = rowIndex % 2 === 0 ? '#ffffff' : '#f9f9f9';
-        
         config.fields.forEach((field, colIndex) => {
           const xPosition = 50 + (colIndex * columnWidth);
           const value = getNestedValue(item, field.key);
           const formattedValue = formatValue(value, field.type);
-          
           doc.rect(xPosition, yPosition, columnWidth, 20)
              .fillAndStroke(fillColor, '#cccccc')
              .fillColor('black')
@@ -488,10 +749,8 @@ async function generateModulePDFReport(
                ellipsis: true
              });
         });
-        
         yPosition += 20;
       });
-      
       doc.end();
     } catch (error) {
       reject(error);

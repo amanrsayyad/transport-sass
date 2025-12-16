@@ -22,6 +22,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ProductsManager } from "./ProductsManager";
 
@@ -43,6 +44,8 @@ const customerSchema = z.object({
   customerName: z.string().min(2, "Customer name must be at least 2 characters"),
   companyName: z.string().min(2, "Company name must be at least 2 characters"),
   mobileNo: z.string().min(10, "Mobile number must be at least 10 digits"),
+  gstin: z.string().optional(),
+  address: z.string().optional(),
   products: z.array(productSchema).default([]),
 });
 
@@ -64,6 +67,8 @@ export function CustomerDialog({
     customerName: "",
     companyName: "",
     mobileNo: "",
+    gstin: "",
+    address: "",
     products: [],
   },
   onSubmit,
@@ -74,12 +79,14 @@ export function CustomerDialog({
   const [step, setStep] = useState<"details" | "products">("details");
   const [products, setProducts] = useState<Product[]>(defaultValues.products || []);
 
-  const form = useForm<z.infer<typeof customerSchema>>({
+  const form = useForm<z.input<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
     defaultValues: {
       customerName: defaultValues.customerName || "",
       companyName: defaultValues.companyName || "",
       mobileNo: defaultValues.mobileNo || "",
+      gstin: defaultValues.gstin || "",
+      address: defaultValues.address || "",
       products: defaultValues.products || [],
     },
   });
@@ -98,7 +105,7 @@ export function CustomerDialog({
     setProducts(defaultValues.products || []);
   }, [defaultValues, form]);
 
-  const handleSubmit = (data: z.infer<typeof customerSchema>) => {
+  const handleSubmit = (data: z.input<typeof customerSchema>) => {
     const customerData = {
       ...data,
       products,
@@ -202,6 +209,42 @@ export function CustomerDialog({
                     <FormControl>
                       <Input
                         placeholder="Enter mobile number"
+                        {...field}
+                        disabled={isLoading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="gstin"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>GSTIN (optional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Enter GSTIN"
+                        {...field}
+                        disabled={isLoading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Address (optional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Enter address"
                         {...field}
                         disabled={isLoading}
                       />

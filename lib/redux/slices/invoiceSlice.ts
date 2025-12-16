@@ -23,6 +23,11 @@ export interface Invoice {
   lrNo: string;
   remarks?: string;
   total: number;
+  taxPercent?: number;
+  taxAmount?: number;
+  advanceAmount?: number;
+  remainingAmount?: number;
+  appUserId?: string | { _id: string };
   status: 'Paid' | 'Unpaid' | 'Pending';
   rows: InvoiceRow[];
   createdAt: string;
@@ -40,6 +45,9 @@ export interface InvoiceCreateData {
   consignee?: string;
   lrNo?: string;
   remarks?: string;
+  taxPercent?: number;
+  advanceAmount?: number;
+  appUserId?: string;
   status?: 'Paid' | 'Unpaid' | 'Pending';
   rows: InvoiceRow[];
 }
@@ -79,6 +87,8 @@ export const fetchInvoices = createAsyncThunk(
     status?: string;
     customerName?: string;
     lrNo?: string;
+    fromDate?: string;
+    toDate?: string;
   } = {}) => {
     const queryParams = new URLSearchParams();
     
@@ -87,6 +97,8 @@ export const fetchInvoices = createAsyncThunk(
     if (params.status) queryParams.append('status', params.status);
     if (params.customerName) queryParams.append('customerName', params.customerName);
     if (params.lrNo) queryParams.append('lrNo', params.lrNo);
+    if (params.fromDate) queryParams.append('fromDate', params.fromDate);
+    if (params.toDate) queryParams.append('toDate', params.toDate);
     
     const response = await fetch(`/api/invoices?${queryParams}`);
     if (!response.ok) {
@@ -160,6 +172,31 @@ export const deleteInvoice = createAsyncThunk(
     }
     
     return { id };
+  }
+);
+
+// Bulk update invoice statuses (and optionally generate income/transactions)
+export const bulkUpdateInvoiceStatus = createAsyncThunk(
+  'invoices/bulkUpdateInvoiceStatus',
+  async (params: {
+    invoiceIds: string[];
+    status: 'Paid' | 'Unpaid';
+    bankId?: string;
+    appUserId?: string;
+    category?: string;
+    description?: string;
+    date?: string;
+  }) => {
+    const response = await fetch('/api/invoices/bulk-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to bulk update invoice statuses');
+    }
+    return response.json();
   }
 );
 
@@ -254,6 +291,36 @@ const invoiceSlice = createSlice({
       .addCase(deleteInvoice.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to delete invoice';
+      })
+      
+      // Bulk update invoice status
+      .addCase(bulkUpdateInvoiceStatus.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(bulkUpdateInvoiceStatus.fulfilled, (state, action) => {
+        state.loading = false;
+        const updatedInvoices: Invoice[] = action.payload.invoices;
+        // Update matching invoices in state
+        updatedInvoices.forEach((updated) => {
+          const idx = state.invoices.findIndex((i) => i._id === updated._id);
+          if (idx !== -1) {
+            state.invoices[idx] = {
+              ...state.invoices[idx],
+              ...updated,
+            } as Invoice;
+          }
+          if (state.currentInvoice && state.currentInvoice._id === updated._id) {
+            state.currentInvoice = {
+              ...state.currentInvoice,
+              ...updated,
+            } as Invoice;
+          }
+        });
+      })
+      .addCase(bulkUpdateInvoiceStatus.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to bulk update invoice statuses';
       });
   },
 });

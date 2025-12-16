@@ -159,11 +159,14 @@ const DriverBudgetManagement = () => {
           }))
         };
       }
-      if (field.name === "dailyBudgetAmount" && selectedDriverId && previousBudgetAmount > 0) {
-        return {
-          ...field,
-          placeholder: `Enter new budget amount (${formatCurrency(previousBudgetAmount)} will be added automatically)`
-        };
+      if (field.name === "dailyBudgetAmount") {
+        if (selectedDriverId && previousBudgetAmount > 0) {
+          return {
+            ...field,
+            placeholder: `Enter new budget amount (${formatCurrency(previousBudgetAmount)} will be added automatically)`,
+          } as any;
+        }
+        return field;
       }
       return field;
     });
@@ -220,14 +223,17 @@ const DriverBudgetManagement = () => {
 
   const handleSubmit = async (data: any): Promise<void> => {
     try {
-      // Add previous budget amount to the entered amount if carry-forward is applicable
-      const finalData = { ...data };
-      if (selectedDriverId && previousBudgetAmount > 0) {
-        finalData.dailyBudgetAmount = data.dailyBudgetAmount + previousBudgetAmount;
-        toast.info(`Added ${formatCurrency(previousBudgetAmount)} carry-forward amount. Total: ${formatCurrency(finalData.dailyBudgetAmount)}`);
+      const typedAmount = Number(data.dailyBudgetAmount) || 0;
+      if (typedAmount <= 0) {
+        toast.error('Please enter a positive new daily budget amount.');
+        return;
       }
-      
-      await dispatch(createDriverBudget(finalData)).unwrap();
+
+      if (selectedDriverId && previousBudgetAmount > 0) {
+        toast.info(`Carry-forward ${formatCurrency(previousBudgetAmount)} will be added to this allocation.`);
+      }
+
+      await dispatch(createDriverBudget(data)).unwrap();
       toast.success('Driver budget allocated successfully');
       // Refresh data
       dispatch(fetchDriverBudgets({ page: driverBudgetsPagination.page, limit: driverBudgetsPagination.limit }));
@@ -257,7 +263,8 @@ const DriverBudgetManagement = () => {
         
         if (response.ok) {
           const latestBudgetRecord = await response.json();
-          previousBudget = latestBudgetRecord.remainingBudgetAmount || latestBudgetRecord.dailyBudgetAmount || 0;
+          // Show previous budgetAmount (original daily budget) instead of remainingBudgetAmount
+          previousBudget = latestBudgetRecord.budgetAmount ?? latestBudgetRecord.dailyBudgetAmount ?? 0;
         }
         
         // Update previous budget amount state
@@ -308,6 +315,7 @@ const DriverBudgetManagement = () => {
             defaultValues={getDefaultValues()}
             onSubmit={handleSubmit}
             onFieldChange={handleFieldChange}
+            contentClassName="max-h-[80vh] overflow-y-auto"
             submitLabel="Allocate Budget"
             isLoading={loading}
             mode="create"

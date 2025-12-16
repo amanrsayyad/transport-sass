@@ -18,15 +18,25 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
+    // Drop legacy unique index on mobileNo if present to allow duplicates
+    try {
+      const idxCursor = AppUser.collection.listIndexes();
+      const indexes = await idxCursor.toArray();
+      const mobileIdx = indexes.find(
+        (idx: any) => idx.name === "mobileNo_1" || (idx.key && idx.key.mobileNo === 1)
+      );
+      if (mobileIdx && mobileIdx.unique) {
+        await AppUser.collection.dropIndex(mobileIdx.name || "mobileNo_1").catch(() => {});
+      }
+    } catch {}
     const body = await request.json();
 
-    // Check if mobile number already exists
-    const existingUser = await AppUser.findOne({ mobileNo: body.mobileNo });
-    if (existingUser) {
-      return NextResponse.json(
-        { error: "Mobile number already exists" },
-        { status: 400 }
-      );
+    // Normalize optional fields
+    if (body.gstin === "") {
+      delete body.gstin;
+    }
+    if (body.address === "") {
+      delete body.address;
     }
 
     const appUser = new AppUser(body);
@@ -34,7 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(appUser, { status: 201 });
   } catch (error) {
     return NextResponse.json(
-      { error: "Failed to create app user" },
+      { error: (error as any)?.code === 11000 ? "Duplicate mobile number not allowed by legacy index" : "Failed to create app user" },
       { status: 500 }
     );
   }

@@ -13,6 +13,21 @@ import Attendance from '@/models/Attendance';
 import Transaction from '@/models/Transaction';
 import AppUser from '@/models/AppUser';
 
+// Parse date string strictly as local date (start of day)
+function parseLocalDateParam(input: string | null): Date | null {
+  if (!input) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) { // ISO from <input type="date">
+    const [y, m, d] = input.split('-').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(input)) { // DD/MM/YYYY
+    const [d, m, y] = input.split('/').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+  const dObj = new Date(input);
+  return isNaN(dObj.getTime()) ? null : dObj;
+}
+
 // GET - Fetch all trips
 export async function GET(request: NextRequest) {
   try {
@@ -24,6 +39,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const driverId = searchParams.get('driverId');
     const vehicleId = searchParams.get('vehicleId');
+    const fromDate = searchParams.get('fromDate');
+    const toDate = searchParams.get('toDate');
     
     const skip = (page - 1) * limit;
     
@@ -32,6 +49,22 @@ export async function GET(request: NextRequest) {
     if (status && status !== 'all') filter.status = status;
     if (driverId) filter.driverId = driverId;
     if (vehicleId) filter.vehicleId = vehicleId;
+    
+    // Date range filtering aligned with Invoice logic: filter by primary trip date
+    const dateRange: any = {};
+    const start = parseLocalDateParam(fromDate);
+    const endStart = parseLocalDateParam(toDate);
+    if (start) {
+      dateRange.$gte = start;
+    }
+    if (endStart) {
+      const end = new Date(endStart.getFullYear(), endStart.getMonth(), endStart.getDate(), 23, 59, 59, 999);
+      dateRange.$lte = end;
+    }
+    if (Object.keys(dateRange).length) {
+      // Filter using the first trip date element to prevent including earlier months
+      filter['date.0'] = dateRange;
+    }
     
     const trips = await Trip.find(filter)
       .populate('driverId', 'name')
@@ -43,11 +76,21 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
+
+    // Ensure each route includes advanceAmount in the API response (default to 0 if missing)
+    const normalizedTrips = trips.map((t) => {
+      const obj = t.toObject();
+      obj.routeWiseExpenseBreakdown = (obj.routeWiseExpenseBreakdown || []).map((route: any) => ({
+        ...route,
+        advanceAmount: Number(route?.advanceAmount ?? 0),
+      }));
+      return obj;
+    });
     
     const total = await Trip.countDocuments(filter);
     
     return NextResponse.json({
-      trips,
+      trips: normalizedTrips,
       pagination: {
         page,
         limit,
@@ -70,6 +113,34 @@ export async function POST(request: NextRequest) {
     await connectDB();
     
     const body = await request.json();
+    
+    // Normalize each route: coerce numeric fields, compute totals, and ensure advanceAmount persists
+    if (Array.isArray(body.routeWiseExpenseBreakdown)) {
+      body.routeWiseExpenseBreakdown = body.routeWiseExpenseBreakdown.map((route: any) => {
+        const expenses = Array.isArray(route.expenses)
+          ? route.expenses.map((exp: any) => ({
+              ...exp,
+              amount: Number(exp?.amount ?? 0),
+              quantity: Number(exp?.quantity ?? 0),
+              total: Number(exp?.total ?? 0),
+            }))
+          : [];
+        const totalExpense = expenses.reduce((sum: number, exp: any) => sum + (Number(exp.total) || 0), 0);
+        const weight = Number(route?.weight ?? 0);
+        const rate = Number(route?.rate ?? 0);
+        const routeAmount = Number(route?.routeAmount ?? (rate * weight));
+        const advanceAmount = Number(route?.advanceAmount ?? 0);
+        return {
+          ...route,
+          weight,
+          rate,
+          routeAmount,
+          expenses,
+          totalExpense,
+          advanceAmount,
+        };
+      });
+    }
     
     // Validate required fields
     if (!body.createdBy) {
@@ -145,38 +216,55 @@ export async function POST(request: NextRequest) {
       $inc: { fuelQuantity: -fuelNeededForTrip }
     });
     
-    // Generate route-wise invoices and conditionally create income/transactions based on status
+    // Generate route-wise invoices and conditionally create income/transactions based on per-route status,
+    // with support for advanceAmount on completed routes
     for (const route of body.routeWiseExpenseBreakdown) {
-      // Create Invoice (always created, but status depends on trip status)
-      const invoiceCount = await Invoice.countDocuments();
-      const invoiceNumber = `INV${new Date().getFullYear()}${String(invoiceCount + 1).padStart(4, '0')}`;
+      const advanceAmount = Number(route.advanceAmount || 0);
+      const remainingAmount = Math.max(0, Number(route.routeAmount || 0) - advanceAmount);
+      const isCompletedWithAdvance = route.routeStatus === 'Completed' && advanceAmount > 0;
+      const lrNo = `LR${tripId}${route.routeNumber}`;
+
+      // Upsert invoice by lrNo to avoid duplicate-key errors and ensure idempotency
+      await Invoice.updateOne(
+        { lrNo },
+        {
+          $set: {
+            date: (route?.dates && route.dates[0]) ? route.dates[0] : ((body.date && body.date[0]) ? body.date[0] : new Date()),
+            from: route.startLocation,
+            to: route.endLocation,
+            customerName: route.customerName,
+            lrNo,
+            rows: [{
+              product: route.productName,
+              truckNo: body.vehicleNumber,
+              weight: route.weight,
+              rate: route.rate,
+              total: route.routeAmount
+            }],
+            total: route.routeAmount,
+            advanceAmount,
+            remainingAmount,
+            appUserId: route.userId,
+            status: isCompletedWithAdvance ? 'Unpaid' : (route.routeStatus === 'Completed' ? 'Paid' : 'Unpaid')
+          }
+        },
+        { upsert: true }
+      );
       
-      const invoice = await Invoice.create({
-        date: body.date[0],
-        from: route.startLocation,
-        to: route.endLocation,
-        customerName: route.customerName,
-        lrNo: `LR${tripId}${route.routeNumber}`,
-        rows: [{
-          product: route.productName,
-          truckNo: body.vehicleNumber,
-          weight: route.weight,
-          rate: route.rate,
-          total: route.routeAmount
-        }],
-        total: route.routeAmount,
-        status: body.status === 'Completed' ? 'Unpaid' : 'Pending'
-      });
-      
-      // Only create income, transactions, and bank updates if trip status is 'Completed'
-      if (body.status === 'Completed') {
+      // Only create income, transactions, and bank updates when route is Completed
+      if (route.routeStatus === 'Completed') {
+        const incomeAmount = isCompletedWithAdvance ? advanceAmount : Number(route.routeAmount || 0);
+        const incomeDesc = isCompletedWithAdvance
+          ? `Advance income from trip ${tripId} - Route ${route.routeNumber}`
+          : `Income from trip ${tripId} - Route ${route.routeNumber}`;
+
         // Create Income record
         const income = await Income.create({
           appUserId: route.userId,
-          date: body.date[0],
+          date: (route?.dates && route.dates[0]) ? route.dates[0] : ((body.date && body.date[0]) ? body.date[0] : new Date()),
           category: 'Trip Income',
-          amount: route.routeAmount,
-          description: `Income from trip ${tripId} - Route ${route.routeNumber}`,
+          amount: incomeAmount,
+          description: incomeDesc,
           bankId: route.bankId
         });
         
@@ -186,13 +274,13 @@ export async function POST(request: NextRequest) {
         
         // Get current bank balance before update
         const bank = await Bank.findById(route.bankId);
-        const balanceAfter = (bank?.balance || 0) + route.routeAmount;
+        const balanceAfter = (bank?.balance || 0) + incomeAmount;
         
         await Transaction.create({
           transactionId,
           type: 'INCOME',
-          description: `Income from trip ${tripId} - Route ${route.routeNumber}`,
-          amount: route.routeAmount,
+          description: incomeDesc,
+          amount: incomeAmount,
           toBankId: route.bankId,
           appUserId: route.userId,
           relatedEntityId: income._id,
@@ -200,12 +288,12 @@ export async function POST(request: NextRequest) {
           category: 'Trip Income',
           status: 'COMPLETED',
           balanceAfter,
-          date: body.date[0]
+          date: (route?.dates && route.dates[0]) ? route.dates[0] : ((body.date && body.date[0]) ? body.date[0] : new Date())
         });
         
         // Update bank balance based on selected app user and bank
         await Bank.findByIdAndUpdate(route.bankId, {
-          $inc: { balance: route.routeAmount }
+          $inc: { balance: incomeAmount }
         });
         
         // Create Transaction record for bank balance update
@@ -216,7 +304,7 @@ export async function POST(request: NextRequest) {
           transactionId: bankTransactionId,
           type: 'BANK_UPDATE',
           description: `Bank balance update for trip ${tripId} - Route ${route.routeNumber}`,
-          amount: route.routeAmount,
+          amount: incomeAmount,
           toBankId: route.bankId,
           appUserId: route.userId,
           relatedEntityId: route.bankId,
@@ -224,80 +312,65 @@ export async function POST(request: NextRequest) {
           category: 'Bank Update',
           status: 'COMPLETED',
           balanceAfter,
-          date: body.date[0]
+          date: (route?.dates && route.dates[0]) ? route.dates[0] : ((body.date && body.date[0]) ? body.date[0] : new Date())
         });
       }
       
       // Note: Expense records are not created here as expenses are already deducted from driver budget
+
+      // Ensure the persisted Trip document reflects the latest advanceAmount per route
+      await Trip.updateOne(
+        { _id: trip._id, 'routeWiseExpenseBreakdown.routeNumber': route.routeNumber },
+        { $set: { 'routeWiseExpenseBreakdown.$.advanceAmount': advanceAmount } }
+      );
     }
     
-    // If status is completed, create attendance records
-    if (body.status === 'Completed') {
-      await createAttendanceRecords(body, trip._id, tripId);
-    } else {
-      // Always create attendance records for all trip dates regardless of status
+    // Create attendance records only if any route is marked Completed
+    const anyCompletedRoute = (body.routeWiseExpenseBreakdown || []).some((r: any) => r.routeStatus === 'Completed');
+    if (anyCompletedRoute) {
       await createAttendanceRecords(body, trip._id, tripId);
     }
     
     return NextResponse.json(trip, { status: 201 });
   } catch (error) {
     console.error('Error creating trip:', error);
-    return NextResponse.json(
-      { error: 'Failed to create trip' },
-      { status: 500 }
-    );
+    const message = (error as any)?.message || 'Failed to create trip';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // Helper function to create attendance records
 async function createAttendanceRecords(tripData: any, tripObjectId: any, tripId: string) {
   try {
-    // Get the month and year from the first trip date
-    const firstTripDate = new Date(tripData.date[0]);
-    const month = firstTripDate.getMonth();
-    const year = firstTripDate.getFullYear();
-    
-    // Get all days in the month
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
-    // Create a set of trip dates for quick lookup
-    const tripDates = new Set(
-      tripData.date.map((date: string) => new Date(date).getDate())
-    );
-    
-    // Process all days in the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const currentDate = new Date(year, month, day);
-      
-      const existingAttendance = await Attendance.findOne({
-        driverId: tripData.driverId,
-        date: currentDate
-      });
-      
-      if (!existingAttendance) {
-        let status: 'Present' | 'Absent' | 'On Trip';
-        let attendanceData: any = {
-          driverId: tripData.driverId,
-          driverName: tripData.driverName,
-          date: currentDate,
-          createdBy: tripData.createdBy
-        };
-        
-        if (tripDates.has(day)) {
-          // Trip date - set as both Present and On Trip
-          status = 'Present';
-          attendanceData.status = status;
-          attendanceData.tripId = tripObjectId;
-          attendanceData.tripNumber = tripId;
-          attendanceData.remarks = 'On Trip';
-        } else {
-          // Non-trip date - set as Absent
-          status = 'Absent';
-          attendanceData.status = status;
-        }
-        
-        await Attendance.create(attendanceData);
-      }
+    // Ensure we have driver name; fallback if absent
+    let driverName = tripData.driverName;
+    if (!driverName && tripData.driverId) {
+      const driver = await Driver.findById(tripData.driverId).select('name');
+      driverName = driver?.name || 'Unknown Driver';
+    }
+
+    // Create or update attendance ONLY for actual trip dates
+    for (const d of tripData.date || []) {
+      const dateObj = new Date(d);
+      // Normalize to midnight to avoid time zone mismatches
+      const normalizedDate = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+
+      await Attendance.updateOne(
+        { driverId: tripData.driverId, date: normalizedDate },
+        {
+          $set: {
+            driverId: tripData.driverId,
+            driverName,
+            date: normalizedDate,
+            status: 'On Trip',
+            tripId: tripObjectId,
+            tripNumber: tripId,
+            remarks: 'On Trip',
+            createdBy: tripData.createdBy
+          }
+        },
+        { upsert: true }
+      );
     }
   } catch (error) {
     console.error('Error creating attendance records:', error);
@@ -313,34 +386,46 @@ async function createCompletedTripRecords(trip: any) {
     
     // Create route-wise invoices, income, expense records and transactions
     for (const route of trip.routeWiseExpenseBreakdown) {
-      // Create Invoice
-      const invoiceCount = await Invoice.countDocuments();
-      const invoiceNumber = `INV${new Date().getFullYear()}${String(invoiceCount + 1).padStart(4, '0')}`;
-      
-      const invoice = await Invoice.create({
-        date: trip.date[0],
-        from: route.startLocation,
-        to: route.endLocation,
-        customerName: route.customerName,
-        lrNo: `LR${trip.tripId}${route.routeNumber}`,
-        rows: [{
-          product: route.productName,
-          truckNo: trip.vehicleNumber,
-          weight: route.weight,
-          rate: route.rate,
-          total: route.routeAmount
-        }],
-        total: route.routeAmount,
-        status: 'Unpaid'
-      });
+      const advanceAmount = Number(route.advanceAmount || 0);
+      const remainingAmount = Math.max(0, Number(route.routeAmount || 0) - advanceAmount);
+      const isAdvance = advanceAmount > 0;
+
+      // Upsert Invoice by lrNo to avoid duplicate-key errors
+      await Invoice.updateOne(
+        { lrNo: `LR${trip.tripId}${route.routeNumber}` },
+        {
+          $set: {
+            date: (route?.dates && route.dates[0]) ? route.dates[0] : (trip.date && trip.date[0]) ? trip.date[0] : new Date(),
+            from: route.startLocation,
+            to: route.endLocation,
+            customerName: route.customerName,
+            lrNo: `LR${trip.tripId}${route.routeNumber}`,
+            rows: [{
+              product: route.productName,
+              truckNo: trip.vehicleNumber,
+              weight: route.weight,
+              rate: route.rate,
+              total: route.routeAmount
+            }],
+            total: route.routeAmount,
+            advanceAmount,
+            remainingAmount,
+            appUserId: route.userId,
+            status: isAdvance ? 'Unpaid' : 'Paid'
+          }
+        },
+        { upsert: true }
+      );
       
       // Create Income record
       const income = await Income.create({
         appUserId: route.userId,
-        date: trip.date[0],
+        date: (route?.dates && route.dates[0]) ? route.dates[0] : (trip.date && trip.date[0]) ? trip.date[0] : new Date(),
         category: 'Trip Income',
-        amount: route.routeAmount,
-        description: `Income from trip ${trip.tripId} - Route ${route.routeNumber}`,
+        amount: isAdvance ? advanceAmount : Number(route.routeAmount || 0),
+        description: isAdvance
+          ? `Advance income from trip ${trip.tripId} - Route ${route.routeNumber}`
+          : `Income from trip ${trip.tripId} - Route ${route.routeNumber}`,
         bankId: route.bankId
       });
       
@@ -350,13 +435,16 @@ async function createCompletedTripRecords(trip: any) {
       
       // Get current bank balance before update
       const bank = await Bank.findById(route.bankId);
-      const balanceAfter = (bank?.balance || 0) + route.routeAmount;
+      const incomeAmount = isAdvance ? advanceAmount : Number(route.routeAmount || 0);
+      const balanceAfter = (bank?.balance || 0) + incomeAmount;
       
       await Transaction.create({
         transactionId,
         type: 'INCOME',
-        description: `Income from trip ${trip.tripId} - Route ${route.routeNumber}`,
-        amount: route.routeAmount,
+        description: isAdvance
+          ? `Advance income from trip ${trip.tripId} - Route ${route.routeNumber}`
+          : `Income from trip ${trip.tripId} - Route ${route.routeNumber}`,
+        amount: incomeAmount,
         toBankId: route.bankId,
         appUserId: route.userId,
         relatedEntityId: income._id,
@@ -364,12 +452,12 @@ async function createCompletedTripRecords(trip: any) {
         category: 'Trip Income',
         status: 'COMPLETED',
         balanceAfter,
-        date: trip.date[0]
+        date: (route?.dates && route.dates[0]) ? route.dates[0] : (trip.date && trip.date[0]) ? trip.date[0] : new Date()
       });
       
       // Update bank balance
       await Bank.findByIdAndUpdate(route.bankId, {
-        $inc: { balance: route.routeAmount }
+        $inc: { balance: incomeAmount }
       });
       
       // Create Transaction record for bank balance update
@@ -380,7 +468,7 @@ async function createCompletedTripRecords(trip: any) {
         transactionId: bankTransactionId,
         type: 'BANK_UPDATE',
         description: `Bank balance update for trip ${trip.tripId} - Route ${route.routeNumber}`,
-        amount: route.routeAmount,
+        amount: incomeAmount,
         toBankId: route.bankId,
         appUserId: route.userId,
         relatedEntityId: route.bankId,
@@ -388,7 +476,7 @@ async function createCompletedTripRecords(trip: any) {
         category: 'Bank Update',
         status: 'COMPLETED',
         balanceAfter,
-        date: trip.date[0]
+        date: (route?.dates && route.dates[0]) ? route.dates[0] : (trip.date && trip.date[0]) ? trip.date[0] : new Date()
       });
       
       // Note: Expense records are not created here as expenses are already deducted from driver budget

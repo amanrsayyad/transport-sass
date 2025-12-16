@@ -5,7 +5,7 @@ import Bank from '@/models/Bank';
 import Transaction from '@/models/Transaction';
 import AppUser from '@/models/AppUser';
 
-// GET - Fetch all income records with pagination and filtering
+// GET - Fetch all income records with pagination
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
@@ -15,39 +15,12 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const skip = (page - 1) * limit;
     
-    // Get filter parameters
-    const appUserId = searchParams.get('appUserId');
-    const bankId = searchParams.get('bankId');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
-    
-    // Build filter query
-    const filter: any = {};
-    
-    if (appUserId) {
-      filter.appUserId = appUserId;
-    }
-    
-    if (bankId) {
-      filter.bankId = bankId;
-    }
-    
-    if (startDate || endDate) {
-      filter.date = {};
-      if (startDate) {
-        filter.date.$gte = new Date(startDate);
-      }
-      if (endDate) {
-        filter.date.$lte = new Date(endDate);
-      }
-    }
-    
-    // Get total count for pagination with filters
-    const total = await Income.countDocuments(filter);
+    // Get total count for pagination
+    const total = await Income.countDocuments();
     const pages = Math.ceil(total / limit);
     
-    // Get paginated results with filters
-    const incomes = await Income.find(filter)
+    // Get paginated results
+    const incomes = await Income.find()
       .populate('appUserId', 'name email')
       .populate('bankId', 'bankName accountNumber')
       .sort({ createdAt: -1 })

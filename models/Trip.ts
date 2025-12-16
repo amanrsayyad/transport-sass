@@ -16,6 +16,8 @@ export interface IRouteWiseExpenseBreakdown {
   weight: number;
   rate: number;
   routeAmount: number;
+  advanceAmount?: number;
+  dates?: Date[];
   userId: mongoose.Types.ObjectId;
   userName: string;
   customerId: mongoose.Types.ObjectId;
@@ -23,6 +25,7 @@ export interface IRouteWiseExpenseBreakdown {
   bankName: string;
   bankId: mongoose.Types.ObjectId;
   paymentType: string;
+  routeStatus: 'Draft' | 'In Progress' | 'Completed' | 'Cancelled';
   expenses: IExpense[];
   totalExpense: number;
 }
@@ -67,6 +70,8 @@ const RouteWiseExpenseBreakdownSchema = new Schema<IRouteWiseExpenseBreakdown>({
   weight: { type: Number, required: true },
   rate: { type: Number, required: true },
   routeAmount: { type: Number, required: true },
+  advanceAmount: { type: Number, default: 0 },
+  dates: [{ type: Date }],
   userId: { type: Schema.Types.ObjectId, ref: 'AppUser', required: true },
   userName: { type: String, required: true },
   customerId: { type: Schema.Types.ObjectId, ref: 'Customer', required: true },
@@ -77,6 +82,11 @@ const RouteWiseExpenseBreakdownSchema = new Schema<IRouteWiseExpenseBreakdown>({
     type: String, 
     required: true,
     enum: ['Cash', 'UPI', 'Net Banking', 'Credit Card', 'Debit Card', 'Cheque']
+  },
+  routeStatus: {
+    type: String,
+    enum: ['Draft', 'In Progress', 'Completed', 'Cancelled'],
+    default: 'In Progress'
   },
   expenses: [ExpenseSchema],
   totalExpense: { type: Number, required: true }
@@ -123,6 +133,13 @@ TripSchema.pre('save', function(next) {
   
   // Calculate remainingAmount
   this.remainingAmount = this.tripRouteCost - this.tripExpenses - this.tripDiselCost;
+  
+  // Coerce per-route advanceAmount to number to avoid accidental 0 defaults
+  this.routeWiseExpenseBreakdown = this.routeWiseExpenseBreakdown.map((route: any) => ({
+    ...route,
+    advanceAmount: Number(route?.advanceAmount ?? 0),
+    totalExpense: Number(route?.totalExpense ?? 0)
+  }));
   
   next();
 });

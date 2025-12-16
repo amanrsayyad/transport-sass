@@ -18,6 +18,8 @@ export interface Customer {
   customerName: string;
   companyName: string;
   mobileNo: string;
+  gstin?: string;
+  address?: string;
   products: Product[];
   createdAt: string;
   updatedAt: string;

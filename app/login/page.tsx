@@ -74,8 +74,8 @@ export default function LoginPage() {
           })
         );
 
-        // Store token in localStorage
-        localStorage.setItem("token", result.token);
+        const storage = form.getValues("rememberMe") ? localStorage : sessionStorage;
+        storage.setItem("token", result.token);
 
         router.push("/dashboard");
       } else {

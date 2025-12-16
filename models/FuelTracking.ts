@@ -28,6 +28,11 @@ const FuelTrackingSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  // Newly added fuel in this record; used for amount and average calculations
+  addFuelQuantity: {
+    type: Number,
+    default: 0,
+  },
   remainingFuelQuantity: {
     type: Number,
     default: 0,

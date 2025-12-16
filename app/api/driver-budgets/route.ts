@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import DriverBudget from '@/models/DriverBudget';
+import Expense from '@/models/Expense';
 import Bank from '@/models/Bank';
 import Transaction from '@/models/Transaction';
 import AppUser from '@/models/AppUser';
@@ -136,6 +137,7 @@ export async function POST(request: NextRequest) {
     const previousBudget = await DriverBudget.findOne({ driverId })
       .sort({ createdAt: -1 });
     
+    // Carry forward uses the previous remaining amount
     const carryForwardAmount = previousBudget?.remainingBudgetAmount || 0;
     const totalBudgetAmount = dailyBudgetAmount + carryForwardAmount;
 
@@ -144,7 +146,7 @@ export async function POST(request: NextRequest) {
       appUserId,
       bankId,
       driverId,
-      dailyBudgetAmount,
+      dailyBudgetAmount: totalBudgetAmount,
       remainingBudgetAmount: totalBudgetAmount,
       description,
       date: new Date(date),
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Update bank balance
+    // Update bank balance for only the new budget amount
     await Bank.findByIdAndUpdate(bankId, {
       $inc: { balance: -dailyBudgetAmount }
     });
@@ -190,6 +192,19 @@ export async function POST(request: NextRequest) {
     // Update driver budget with transaction ID
     driverBudget.transactionId = transaction._id;
     await driverBudget.save();
+
+    // Create an expense record for only the new daily budget amount
+    const expense = new Expense({
+      appUserId,
+      bankId,
+      category: 'Driver Budget',
+      amount: dailyBudgetAmount,
+      description: description || `Daily budget for ${driver.name}`,
+      date: new Date(date),
+      transactionId: transaction._id,
+    });
+
+    await expense.save();
 
     const populatedBudget = await DriverBudget.findById(driverBudget._id)
       .populate('appUserId', 'name email')

@@ -38,6 +38,14 @@ export function CustomerDetails({ customer, onClose }: CustomerDetailsProps) {
                 <h3 className="text-sm font-medium text-gray-500">Mobile Number</h3>
                 <p className="text-base">{customer.mobileNo}</p>
               </div>
+              <div>
+                <h3 className="text-sm font-medium text-gray-500">GSTIN</h3>
+                <p className="text-base">{customer.gstin || "-"}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-gray-500">Address</h3>
+                <p className="text-base whitespace-pre-line">{customer.address || "-"}</p>
+              </div>
             </div>
             <div className="space-y-2">
               <div>

@@ -62,9 +62,9 @@ export async function PUT(
       );
     }
 
-    if (body.fuelQuantity <= 0 || body.fuelRate <= 0) {
+    if ((body.addFuelQuantity === undefined || body.addFuelQuantity <= 0) || body.fuelRate <= 0) {
       return NextResponse.json(
-        { error: 'Fuel quantity and rate must be greater than 0' },
+        { error: 'Add fuel quantity and rate must be greater than 0' },
         { status: 400 }
       );
     }
@@ -97,10 +97,11 @@ export async function PUT(
       );
     }
 
-    // Calculate derived fields
-    const totalAmount = body.fuelQuantity * body.fuelRate;
+    // Calculate derived fields using ONLY the newly added fuel
+    const effectiveAdd = body.addFuelQuantity ?? body.fuelQuantity;
+    const totalAmount = effectiveAdd * body.fuelRate;
     const distance = body.endKm - body.startKm;
-    const truckAverage = distance / body.fuelQuantity;
+    const truckAverage = distance / effectiveAdd;
 
     // Check if bank has sufficient balance for the difference
     const amountDifference = totalAmount - existingRecord.totalAmount;
@@ -153,6 +154,7 @@ export async function PUT(
         startKm: body.startKm,
         endKm: body.endKm,
         fuelQuantity: body.fuelQuantity,
+        addFuelQuantity: body.addFuelQuantity ?? existingRecord.addFuelQuantity ?? 0,
         fuelRate: body.fuelRate,
         totalAmount,
         truckAverage,
@@ -176,7 +178,7 @@ export async function PUT(
         appUserId: body.appUserId,
         bankId: body.bankId,
         amount: totalAmount,
-        description: `Fuel expense for ${vehicle.registrationNumber} - ${body.description || 'Updated'}`,
+        description: `Fuel expense for ${vehicle.registrationNumber} - ${(body.addFuelQuantity ?? existingRecord.addFuelQuantity ?? 0)}L`,
         date: body.date
       });
     }

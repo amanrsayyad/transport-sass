@@ -63,6 +63,8 @@ const customerSchema = z.object({
   customerName: z.string().min(2, "Customer name must be at least 2 characters"),
   companyName: z.string().min(2, "Company name must be at least 2 characters"),
   mobileNo: z.string().min(10, "Mobile number must be at least 10 digits"),
+  gstin: z.string().optional(),
+  address: z.string().optional(),
   products: z.array(productSchema).optional().default([]),
 });
 
@@ -89,12 +91,28 @@ const customerFields = [
     placeholder: "Enter mobile number",
     required: true,
   },
+  {
+    name: "gstin",
+    label: "GSTIN",
+    type: "text" as const,
+    placeholder: "Enter GSTIN (optional)",
+    required: false,
+  },
+  {
+    name: "address",
+    label: "Address",
+    type: "textarea" as const,
+    placeholder: "Enter address (optional)",
+    required: false,
+  },
 ];
 
 const defaultValues = {
   customerName: "",
   companyName: "",
   mobileNo: "",
+  gstin: "",
+  address: "",
   products: [],
 };
 
@@ -238,6 +256,8 @@ export default function CustomersPage() {
                     <TableHead>Customer Name</TableHead>
                     <TableHead>Company Name</TableHead>
                     <TableHead>Mobile No</TableHead>
+                    <TableHead>GSTIN</TableHead>
+                    <TableHead>Address</TableHead>
                     <TableHead>Products</TableHead>
                     <TableHead>Created At</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -251,6 +271,8 @@ export default function CustomersPage() {
                       </TableCell>
                       <TableCell>{customer.companyName}</TableCell>
                       <TableCell>{customer.mobileNo}</TableCell>
+                      <TableCell>{customer.gstin || "-"}</TableCell>
+                      <TableCell className="max-w-[260px] truncate">{customer.address || "-"}</TableCell>
                       <TableCell>
                         <Badge>{customer.products?.length || 0}</Badge>
                       </TableCell>
@@ -279,6 +301,8 @@ export default function CustomersPage() {
                               customerName: customer.customerName,
                               companyName: customer.companyName,
                               mobileNo: customer.mobileNo,
+                              gstin: customer.gstin || "",
+                              address: customer.address || "",
                               products: customer.products || [],
                             }}
                             onSubmit={(data) => handleEdit(data, customer._id)}

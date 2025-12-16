@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
       startKm, 
       endKm, 
       fuelQuantity, 
+      addFuelQuantity,
       fuelRate, 
       description, 
       date,
@@ -91,9 +92,9 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!appUserId || !bankId || !vehicleId || startKm === undefined || 
-        endKm === undefined || !fuelQuantity || !fuelRate || !date || !paymentType) {
+        endKm === undefined || addFuelQuantity === undefined || !fuelRate || !date || !paymentType) {
       return NextResponse.json(
-        { error: 'All fields are required: appUserId, bankId, vehicleId, startKm, endKm, fuelQuantity, fuelRate, date, and paymentType' },
+        { error: 'All fields are required: appUserId, bankId, vehicleId, startKm, endKm, addFuelQuantity, fuelRate, date, and paymentType' },
         { status: 400 }
       );
     }
@@ -105,9 +106,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (fuelQuantity <= 0 || fuelRate <= 0) {
+    if (addFuelQuantity <= 0 || fuelRate <= 0) {
       return NextResponse.json(
-        { error: 'Fuel quantity and rate must be greater than 0' },
+        { error: 'Add fuel quantity and rate must be greater than 0' },
         { status: 400 }
       );
     }
@@ -117,18 +118,17 @@ export async function POST(request: NextRequest) {
       .sort({ createdAt: -1 });
     
     let carryForwardFuel = 0;
-    if (previousFuelRecord && previousFuelRecord.remainingFuelQuantity > 0) {
-      carryForwardFuel = previousFuelRecord.remainingFuelQuantity;
-      console.log(`Carrying forward ${carryForwardFuel}L of fuel from previous record`);
+    if (previousFuelRecord && previousFuelRecord.fuelQuantity > 0) {
+      carryForwardFuel = previousFuelRecord.fuelQuantity;
+      console.log(`Carrying forward ${carryForwardFuel}L (previous fuelQuantity) from previous record`);
     }
     
-    // Calculate total fuel quantity including carry-forward
-    const totalFuelQuantity = fuelQuantity + carryForwardFuel;
-    
-    // Calculate total amount and truck average
-    const totalAmount = fuelQuantity * fuelRate;
+    // Calculate total amount and metrics using ONLY the newly added fuel
+    const totalAmount = addFuelQuantity * fuelRate;
     const distanceTraveled = endKm - startKm;
-    const truckAverage = distanceTraveled / totalFuelQuantity; // KM per liter using total fuel
+    
+    // Compute truck average using newly added fuel only
+    const truckAverage = distanceTraveled / addFuelQuantity; // KM per liter using new fuel
 
     // Verify app user, bank, and vehicle exist
     const [appUser, bank, vehicle] = await Promise.all([
@@ -174,7 +174,10 @@ export async function POST(request: NextRequest) {
       startKm,
       endKm,
       fuelQuantity,
-      remainingFuelQuantity: totalFuelQuantity, // Set initial remaining fuel to total fuel
+      addFuelQuantity,
+      // Remaining fuel after this trip equals carry-forward from previous record.
+      // We consider newly added fuel consumed during this trip for mileage calculation above.
+      remainingFuelQuantity: carryForwardFuel,
       fuelRate,
       totalAmount,
       truckAverage,
@@ -207,7 +210,7 @@ export async function POST(request: NextRequest) {
     const transaction = new Transaction({
       transactionId,
       type: 'FUEL',
-      description: description || `Fuel for ${vehicle.registrationNumber} - ${fuelQuantity}L`,
+      description: description || `Fuel for ${vehicle.registrationNumber} - ${addFuelQuantity}L`,
       amount: totalAmount,
       fromBankId: bankId,
       appUserId,

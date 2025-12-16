@@ -50,6 +50,16 @@ const customerSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    gstin: {
+      type: String,
+      trim: true,
+      default: undefined,
+    },
+    address: {
+      type: String,
+      trim: true,
+      default: undefined,
+    },
     products: [productSchema],
   },
   {
@@ -62,7 +72,13 @@ customerSchema.index({ customerName: 1 });
 customerSchema.index({ companyName: 1 });
 customerSchema.index({ mobileNo: 1 });
 
-const Customer =
-  mongoose.models.Customer || mongoose.model("Customer", customerSchema);
+// Ensure schema changes apply during dev hot-reload
+if (mongoose.models.Customer) {
+  if (typeof (mongoose as any).deleteModel === "function") {
+    (mongoose as any).deleteModel("Customer");
+  } else {
+    delete (mongoose as any).models.Customer;
+  }
+}
 
-export default Customer;
+export default mongoose.model("Customer", customerSchema);

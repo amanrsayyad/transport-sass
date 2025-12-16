@@ -36,6 +36,14 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
+    // Normalize optional fields
+    if (typeof body.gstin === "string" && body.gstin.trim() === "") {
+      delete body.gstin;
+    }
+    if (typeof body.address === "string" && body.address.trim() === "") {
+      delete body.address;
+    }
+
     const customer = await Customer.findByIdAndUpdate(id, body, {
       new: true,
       runValidators: true,

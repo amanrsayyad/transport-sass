@@ -43,6 +43,8 @@ import {
 const appUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   mobileNo: z.string().min(10, "Mobile number must be at least 10 digits"),
+  gstin: z.string().optional(),
+  address: z.string().optional(),
   status: z.enum(["active", "inactive"]),
 });
 
@@ -62,6 +64,20 @@ const appUserFields = [
     required: true,
   },
   {
+    name: "gstin",
+    label: "GSTIN",
+    type: "text" as const,
+    placeholder: "Enter GSTIN (optional)",
+    required: false,
+  },
+  {
+    name: "address",
+    label: "Address",
+    type: "text" as const,
+    placeholder: "Enter address (optional)",
+    required: false,
+  },
+  {
     name: "status",
     label: "Status",
     type: "select" as const,
@@ -77,6 +93,8 @@ const appUserFields = [
 const defaultValues = {
   name: "",
   mobileNo: "",
+  gstin: "",
+  address: "",
   status: "active",
 };
 
@@ -165,6 +183,7 @@ export default function AppUsersPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Mobile No</TableHead>
+                    <TableHead>GSTIN</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created At</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -177,6 +196,7 @@ export default function AppUsersPage() {
                         {appUser.name}
                       </TableCell>
                       <TableCell>{appUser.mobileNo}</TableCell>
+                      <TableCell>{appUser.gstin || "-"}</TableCell>
                       <TableCell>
                         <Badge
                           variant={
@@ -206,6 +226,14 @@ export default function AppUsersPage() {
                               {
                                 label: "Mobile Number",
                                 value: appUser.mobileNo,
+                              },
+                              {
+                                label: "GSTIN",
+                                value: appUser.gstin || "—",
+                              },
+                              {
+                                label: "Address",
+                                value: appUser.address || "—",
                               },
                               {
                                 label: "Status",
@@ -243,6 +271,8 @@ export default function AppUsersPage() {
                             initialData={{
                               name: appUser.name,
                               mobileNo: appUser.mobileNo,
+                              gstin: appUser.gstin || "",
+                              address: appUser.address || "",
                               status: appUser.status,
                             }}
                             onSubmit={(data) => handleEdit(data, appUser._id)}

@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const customerName = searchParams.get('customerName');
     const lrNo = searchParams.get('lrNo');
+    const fromDate = searchParams.get('fromDate');
+    const toDate = searchParams.get('toDate');
     
     const skip = (page - 1) * limit;
     
@@ -27,6 +29,18 @@ export async function GET(request: NextRequest) {
     }
     if (lrNo) {
       filter.lrNo = { $regex: lrNo, $options: 'i' };
+    }
+    if (fromDate || toDate) {
+      filter.date = {};
+      if (fromDate) {
+        const start = new Date(fromDate);
+        filter.date.$gte = start;
+      }
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        filter.date.$lte = end;
+      }
     }
     
     const invoices = await Invoice.find(filter)
@@ -104,8 +118,21 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    // Calculate overall total
-    body.total = body.rows.reduce((sum: number, row: any) => sum + (row.total || 0), 0);
+    // Calculate base total and tax
+    const baseTotal = body.rows.reduce((sum: number, row: any) => sum + (row.total || 0), 0);
+    const taxPercent = body.taxPercent !== undefined && body.taxPercent !== null
+      ? Number(body.taxPercent)
+      : 0;
+    const taxAmount = taxPercent > 0 ? (baseTotal * taxPercent) / 100 : 0;
+    body.taxPercent = taxPercent;
+    body.taxAmount = taxAmount;
+    // Final total includes tax amount
+    body.total = baseTotal + taxAmount;
+    
+    // Support advance and remaining
+    const advanceAmount = Number(body.advanceAmount || 0);
+    body.advanceAmount = advanceAmount;
+    body.remainingAmount = Math.max(0, body.total - advanceAmount);
     
     const invoice = new Invoice(body);
     await invoice.save();

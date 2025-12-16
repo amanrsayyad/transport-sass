@@ -56,6 +56,7 @@ interface FormDialogProps {
   mode?: "create" | "edit";
   initialData?: Record<string, any>;
   onFieldChange?: (fieldName: string, value: any, currentValues: Record<string, any>) => void;
+  contentClassName?: string; // Optional className for DialogContent customization
 }
 
 export function FormDialog({
@@ -71,6 +72,7 @@ export function FormDialog({
   mode = "create",
   initialData,
   onFieldChange,
+  contentClassName,
 }: FormDialogProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>("");
@@ -80,38 +82,39 @@ export function FormDialog({
     defaultValues: mode === "edit" && initialData ? initialData : defaultValues,
   });
 
-  // Reset form when dialog opens or mode changes
+  // Reset form only when dialog opens or mode changes (not on defaultValues updates)
   useEffect(() => {
-    if (open) {
-      if (mode === "edit" && initialData) {
-        form.reset(initialData);
-      } else if (mode === "create") {
-        form.reset(defaultValues);
-      }
+    if (!open) return;
+    if (mode === "edit" && initialData) {
+      form.reset(initialData);
+    } else if (mode === "create") {
+      form.reset(defaultValues);
     }
-  }, [initialData, mode, open, form, defaultValues]);
+    // Intentionally omit defaultValues from deps to avoid mid-typing resets
+  }, [open, mode, initialData]);
 
-  // Update form values when defaultValues change while dialog is open
+  // Update key form values (vehicleId, startKm, endKm, fuelQuantity) when defaults change while dialog is open
   useEffect(() => {
     if (open && mode === "create") {
-      const currentValues = form.getValues();
-      const updatedValues = { ...currentValues };
-      
-      // Only update fields that have changed in defaultValues and are not already filled by user
-      Object.keys(defaultValues).forEach(key => {
-        if (defaultValues[key] !== currentValues[key]) {
-          // For vehicleId and startKm, always update to maintain sync
-          if (key === 'vehicleId' || key === 'startKm') {
-            updatedValues[key] = defaultValues[key];
-          }
-          // For other fields, only update if current value is empty/default
-          else if (!currentValues[key] || currentValues[key] === '' || currentValues[key] === 0) {
-            updatedValues[key] = defaultValues[key];
+      const currentValues: Record<string, any> = form.getValues();
+      const keysToSync = ['vehicleId', 'startKm', 'endKm'];
+
+      keysToSync.forEach((key) => {
+        if (key in defaultValues) {
+          const newVal = (defaultValues as any)[key];
+          const curVal = currentValues[key];
+          // Force-sync fuelQuantity from defaultValues when vehicle changes
+          // so it reflects previous remaining fuel, even if non-zero.
+          const shouldUpdate = newVal !== curVal;
+          if (shouldUpdate) {
+            form.setValue(key as any, newVal, {
+              shouldDirty: true,
+              shouldTouch: false,
+              shouldValidate: false,
+            });
           }
         }
       });
-      
-      form.reset(updatedValues);
     }
   }, [defaultValues, open, mode, form]);
 
@@ -139,7 +142,7 @@ export function FormDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className={`sm:max-w-[600px] ${contentClassName || ""}`}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -228,6 +231,9 @@ export function FormDialog({
                                   ? Number(e.target.value)
                                   : e.target.value;
                               formField.onChange(value);
+                              if (onFieldChange) {
+                                onFieldChange(field.name, value, form.getValues());
+                              }
                             }}
                           />
                         )}

@@ -37,6 +37,8 @@ export interface RouteWiseExpenseBreakdown {
   weight: number;
   rate: number;
   routeAmount: number;
+  advanceAmount?: number;
+  dates?: Date[];
   userId: PopulatedField<string>;
   userName: string;
   customerId: PopulatedField<string>;
@@ -44,6 +46,7 @@ export interface RouteWiseExpenseBreakdown {
   bankName: string;
   bankId: PopulatedField<string>;
   paymentType: string;
+  routeStatus: 'Draft' | 'In Progress' | 'Completed' | 'Cancelled';
   expenses: Expense[];
   totalExpense: number;
 }
@@ -71,6 +74,8 @@ interface TripState {
     status: string;
     driverId: string;
     vehicleId: string;
+    fromDate?: string;
+    toDate?: string;
   };
 }
 
@@ -88,20 +93,24 @@ const initialState: TripState = {
   filters: {
     status: 'all',
     driverId: '',
-    vehicleId: ''
+    vehicleId: '',
+    fromDate: '',
+    toDate: ''
   }
 };
 
 // Async thunks
 export const fetchTrips = createAsyncThunk(
   'trips/fetchTrips',
-  async (params: { page?: number; limit?: number; status?: string; driverId?: string; vehicleId?: string } = {}) => {
+  async (params: { page?: number; limit?: number; status?: string; driverId?: string; vehicleId?: string; fromDate?: string; toDate?: string } = {}) => {
     const queryParams = new URLSearchParams();
     if (params.page) queryParams.append('page', params.page.toString());
     if (params.limit) queryParams.append('limit', params.limit.toString());
     if (params.status && params.status !== 'all') queryParams.append('status', params.status);
-    if (params.driverId) queryParams.append('driverId', params.driverId);
-    if (params.vehicleId) queryParams.append('vehicleId', params.vehicleId);
+    if (params.driverId && params.driverId !== 'all') queryParams.append('driverId', params.driverId);
+    if (params.vehicleId && params.vehicleId !== 'all') queryParams.append('vehicleId', params.vehicleId);
+    if (params.fromDate) queryParams.append('fromDate', params.fromDate);
+    if (params.toDate) queryParams.append('toDate', params.toDate);
 
     const response = await fetch(`/api/trips?${queryParams}`);
     if (!response.ok) {
@@ -178,6 +187,15 @@ const tripSlice = createSlice({
   reducers: {
     setFilters: (state, action: PayloadAction<Partial<TripState['filters']>>) => {
       state.filters = { ...state.filters, ...action.payload };
+    },
+    clearFilters: (state) => {
+      state.filters = {
+        status: 'all',
+        driverId: '',
+        vehicleId: '',
+        fromDate: '',
+        toDate: ''
+      };
     },
     clearCurrentTrip: (state) => {
       state.currentTrip = null;
@@ -270,5 +288,5 @@ const tripSlice = createSlice({
   }
 });
 
-export const { setFilters, clearCurrentTrip, clearError } = tripSlice.actions;
+export const { setFilters, clearFilters, clearCurrentTrip, clearError } = tripSlice.actions;
 export default tripSlice.reducer;

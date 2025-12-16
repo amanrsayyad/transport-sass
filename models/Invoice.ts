@@ -23,6 +23,11 @@ export interface IInvoice extends Document {
   lrNo: string;
   remarks?: string;
   total: number;
+  taxPercent?: number;
+  taxAmount?: number;
+  advanceAmount?: number;
+  remainingAmount?: number;
+  appUserId?: mongoose.Types.ObjectId;
   status: 'Paid' | 'Unpaid' | 'Pending';
   rows: IInvoiceRow[];
   createdAt: Date;
@@ -117,6 +122,26 @@ const InvoiceSchema = new Schema<IInvoice>({
     required: true,
     default: 0
   },
+  taxPercent: {
+    type: Number,
+    default: 0
+  },
+  taxAmount: {
+    type: Number,
+    default: 0
+  },
+  advanceAmount: {
+    type: Number,
+    default: 0
+  },
+  remainingAmount: {
+    type: Number,
+    default: 0
+  },
+  appUserId: {
+    type: Schema.Types.ObjectId,
+    ref: 'AppUser'
+  },
   status: {
     type: String,
     enum: ['Paid', 'Unpaid', 'Pending'],
@@ -155,9 +180,30 @@ InvoiceSchema.pre('save', function(next) {
     }
   });
   
-  // Calculate overall total
-  this.total = this.rows.reduce((sum, row) => sum + (row.total || 0), 0);
+  // Calculate base total
+  const baseTotal = this.rows.reduce((sum, row) => sum + (row.total || 0), 0);
+  // Compute tax values if taxPercent provided
+  const taxPercent = Number((this as any).taxPercent || 0);
+  const taxAmount = isFinite(taxPercent) && taxPercent > 0 ? (baseTotal * taxPercent) / 100 : 0;
+  (this as any).taxAmount = taxAmount;
+  // Set final total including tax
+  this.total = baseTotal + taxAmount;
+  
+  // Derive remainingAmount if advanceAmount provided
+  if (typeof (this as any).advanceAmount === 'number') {
+    (this as any).remainingAmount = Math.max(0, this.total - (this as any).advanceAmount);
+  } else if (typeof (this as any).remainingAmount !== 'number') {
+    (this as any).remainingAmount = this.total;
+  }
   next();
 });
 
-export default mongoose.models.Invoice || mongoose.model<IInvoice>('Invoice', InvoiceSchema);
+// In dev environments, Next.js can cache models; ensure schema updates apply
+if ((mongoose.models as any).Invoice) {
+  try {
+    (mongoose as any).deleteModel('Invoice');
+  } catch (err) {
+    delete (mongoose.models as any).Invoice;
+  }
+}
+export default mongoose.model<IInvoice>('Invoice', InvoiceSchema);

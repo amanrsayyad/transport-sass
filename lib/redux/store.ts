@@ -13,6 +13,7 @@ import tripSlice from "./slices/tripSlice";
 import attendanceSlice from "./slices/attendanceSlice";
 import maintenanceSlice from "./slices/maintenanceSlice";
 import mechanicSlice from "./slices/mechanicSlice";
+import locationSlice from "./slices/locationSlice";
 
 export const store = configureStore({
   reducer: {
@@ -30,6 +31,7 @@ export const store = configureStore({
     attendance: attendanceSlice,
     maintenance: maintenanceSlice,
     mechanics: mechanicSlice,
+    locations: locationSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

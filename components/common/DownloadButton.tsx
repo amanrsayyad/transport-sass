@@ -18,6 +18,7 @@ interface DownloadButtonProps {
   className?: string;
   variant?: "default" | "outline" | "secondary" | "ghost" | "link" | "destructive";
   size?: "default" | "sm" | "lg" | "icon";
+  label?: string;
 }
 
 export const DownloadButton: React.FC<DownloadButtonProps> = ({
@@ -27,6 +28,7 @@ export const DownloadButton: React.FC<DownloadButtonProps> = ({
   className = "",
   variant = "outline",
   size = "sm",
+  label,
 }) => {
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -87,7 +89,7 @@ export const DownloadButton: React.FC<DownloadButtonProps> = ({
           disabled={isDownloading || data.length === 0}
         >
           <Download className="w-4 h-4 mr-2" />
-          {isDownloading ? "Downloading..." : "Download"}
+          {isDownloading ? "Downloading..." : (label || "Download")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

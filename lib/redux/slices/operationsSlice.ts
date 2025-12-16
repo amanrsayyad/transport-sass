@@ -43,6 +43,7 @@ export interface FuelTrackingCreateData {
   startKm: number;
   endKm: number;
   fuelQuantity: number;
+  addFuelQuantity: number;
   fuelRate: number;
   totalAmount: number;
   truckAverage: number;
@@ -74,6 +75,7 @@ export interface FuelTracking {
   startKm: number;
   endKm: number;
   fuelQuantity: number;
+  addFuelQuantity?: number;
   fuelRate: number;
   totalAmount: number;
   truckAverage: number;

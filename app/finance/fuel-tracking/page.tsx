@@ -45,6 +45,8 @@ const fuelTrackingSchema = z.object({
   startKm: z.number().min(0, "Start KM must be positive"),
   endKm: z.number().min(0, "End KM must be positive"),
   fuelQuantity: z.number().min(0.1, "Fuel quantity must be greater than 0"),
+  // Helper field to track incremental fuel added; optional and non-negative
+  addFuelQuantity: z.number().min(0, "Add fuel quantity cannot be negative").optional(),
   fuelRate: z.number().min(0.1, "Fuel rate must be greater than 0"),
   date: z.string().min(1, "Date is required"),
   description: z.string().optional(),
@@ -141,6 +143,7 @@ const defaultValues = {
   startKm: 0,
   endKm: 0,
   fuelQuantity: 0,
+  addFuelQuantity: 0,
   fuelRate: 0,
   date: new Date().toISOString().split('T')[0],
   description: "",
@@ -160,7 +163,10 @@ const FuelTrackingManagement = () => {
   const [selectedAppUserId, setSelectedAppUserId] = useState<string>("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [dynamicStartKm, setDynamicStartKm] = useState<number>(0);
-  const [previousRemainingFuel, setPreviousRemainingFuel] = useState<number>(0);
+  const [previousFuelQuantity, setPreviousFuelQuantity] = useState<number>(0);
+  const [startKmSource, setStartKmSource] = useState<'fuel' | 'trip' | null>(null);
+  const [computedAverage, setComputedAverage] = useState<number | null>(null);
+  const [computedTotalAmount, setComputedTotalAmount] = useState<number | null>(null);
   
   // State for editing functionality
   const [editingRecord, setEditingRecord] = useState<FuelTracking | null>(null);
@@ -193,37 +199,80 @@ const FuelTrackingManagement = () => {
     if (fieldName === 'vehicleId') {
       setSelectedVehicleId(value);
       
-      // Fetch latest trip record to get end km for start km
+      // Fetch latest trip and fuel tracking to determine start KM source
       try {
-        const tripResponse = await fetch(`/api/trips/latest/${value}`);
-        let startKm = 0;
-        
+        const [tripResponse, fuelResponse] = await Promise.all([
+          fetch(`/api/trips/latest/${value}`),
+          fetch(`/api/fuel-tracking/latest/${value}`)
+        ]);
+
+        let tripStartKm = 0;
         if (tripResponse.ok) {
           const latestTrip = await tripResponse.json();
-          startKm = latestTrip.endKm || 0;
+          tripStartKm = Number(latestTrip.startKm ?? 0) || 0;
         }
-        
-        // Update dynamic start km state
-        setDynamicStartKm(startKm);
-        
-        // Fetch latest fuel tracking record to get remaining fuel for carry-forward
-        const fuelResponse = await fetch(`/api/fuel-tracking/latest/${value}`);
-        let remainingFuel = 0;
-        
+
+        let fuelEndKm = 0;
+        let prevFuelQty = 0;
         if (fuelResponse.ok) {
           const latestFuelRecord = await fuelResponse.json();
-          remainingFuel = latestFuelRecord.remainingFuelQuantity || 0;
+          fuelEndKm = Number(latestFuelRecord.endKm ?? 0) || 0;
+          prevFuelQty = Number(latestFuelRecord.fuelQuantity ?? 0) || 0;
         }
-        
-        // Update previous remaining fuel state
-        setPreviousRemainingFuel(remainingFuel);
-        
-        // Update the form field value directly through the form's setValue if available
-        // The FormDialog will handle this through field regeneration
+
+        // Decide the start KM: prioritize previous fuel tracking end KM, fallback to previous trip start KM
+        if (fuelEndKm > 0) {
+          setDynamicStartKm(fuelEndKm);
+          setStartKmSource('fuel');
+        } else if (tripStartKm > 0) {
+          setDynamicStartKm(tripStartKm);
+          setStartKmSource('trip');
+        } else {
+          setDynamicStartKm(0);
+          setStartKmSource(null);
+        }
+
+        // Keep previous fuel quantity for info display
+        setPreviousFuelQuantity(prevFuelQty);
       } catch (error) {
         console.error('Error fetching latest trip or fuel record:', error);
         setDynamicStartKm(0);
-        setPreviousRemainingFuel(0);
+        setStartKmSource(null);
+        setPreviousFuelQuantity(0);
+      }
+    }
+
+    // Recalculate average when startKm, endKm, or addFuelQuantity changes (use add fuel only)
+    if (fieldName === 'startKm' || fieldName === 'endKm' || fieldName === 'addFuelQuantity') {
+      const start = fieldName === 'startKm'
+        ? Number(value) 
+        : Number((currentValues && currentValues.startKm) ?? dynamicStartKm);
+      const end = fieldName === 'endKm'
+        ? Number(value) 
+        : Number((currentValues && currentValues.endKm) ?? 0);
+      const addedQty = fieldName === 'addFuelQuantity'
+        ? Number(value) || 0
+        : Number((currentValues && (currentValues as any).addFuelQuantity) ?? 0);
+
+      if (addedQty > 0 && end > start) {
+        setComputedAverage((end - start) / addedQty);
+      } else {
+        setComputedAverage(null);
+      }
+    }
+
+    // Recalculate total amount when addFuelQuantity or fuelRate changes (use add fuel only)
+    if (fieldName === 'addFuelQuantity' || fieldName === 'fuelRate') {
+      const addedQty = fieldName === 'addFuelQuantity'
+        ? Number(value) || 0
+        : Number((currentValues && (currentValues as any).addFuelQuantity) ?? 0) || 0;
+      const rate = fieldName === 'fuelRate'
+        ? Number(value) || 0
+        : Number((currentValues && currentValues.fuelRate) ?? 0) || 0;
+      if (addedQty > 0 && rate > 0) {
+        setComputedTotalAmount(addedQty * rate);
+      } else {
+        setComputedTotalAmount(null);
       }
     }
   };
@@ -243,20 +292,27 @@ const FuelTrackingManagement = () => {
 
   // Handle create for FormDialog
   const handleCreate = async (data: any) => {
+    // Use addFuelQuantity as the newly added fuel for this record
+    const add = Number(data.addFuelQuantity) || 0;
+    const basePrev = Number(previousFuelQuantity) || 0;
+    // Persist fuelQuantity as previous fuel + newly added fuel (correct addition)
+    data.fuelQuantity = basePrev + add;
     // Validation
     if (data.endKm <= data.startKm) {
       toast.error('End KM must be greater than Start KM');
       return;
     }
 
-    if (data.fuelQuantity <= 0 || data.fuelRate <= 0) {
-      toast.error('Fuel quantity and rate must be greater than 0');
+    // Use add fuel quantity strictly for calculations
+    if (add <= 0 || data.fuelRate <= 0) {
+      toast.error('Add fuel quantity and rate must be greater than 0');
       return;
     }
 
-    const totalAmount = data.fuelQuantity * data.fuelRate;
+    // Use add amount × fuel rate for total amount and average
+    const totalAmount = add * data.fuelRate;
     const distance = data.endKm - data.startKm;
-    const truckAverage = distance / data.fuelQuantity;
+    const truckAverage = distance / add;
     const selectedBank = banks.find(bank => bank._id === data.bankId);
     
     if (selectedBank && totalAmount > selectedBank.balance) {
@@ -270,7 +326,9 @@ const FuelTrackingManagement = () => {
       vehicleId: data.vehicleId,
       startKm: data.startKm,
       endKm: data.endKm,
+      // Save total fuel quantity (previous + added) as requested
       fuelQuantity: data.fuelQuantity,
+      addFuelQuantity: add,
       fuelRate: data.fuelRate,
       totalAmount,
       truckAverage,
@@ -301,14 +359,16 @@ const FuelTrackingManagement = () => {
       return;
     }
 
-    if (data.fuelQuantity <= 0 || data.fuelRate <= 0) {
-      toast.error('Fuel quantity and rate must be greater than 0');
+    const add = Number(data.addFuelQuantity) || 0;
+    if (add <= 0 || data.fuelRate <= 0) {
+      toast.error('Add fuel quantity and rate must be greater than 0');
       return;
     }
 
-    const totalAmount = data.fuelQuantity * data.fuelRate;
+    // Use add amount × fuel rate for total amount in edit
+    const totalAmount = add * data.fuelRate;
     const distance = data.endKm - data.startKm;
-    const truckAverage = distance / data.fuelQuantity;
+    const truckAverage = distance / add;
     const selectedBank = banks.find(bank => bank._id === data.bankId);
     
     // Check bank balance (considering the original amount will be restored)
@@ -327,6 +387,7 @@ const FuelTrackingManagement = () => {
       startKm: data.startKm,
       endKm: data.endKm,
       fuelQuantity: data.fuelQuantity,
+      addFuelQuantity: add,
       fuelRate: data.fuelRate,
       totalAmount,
       truckAverage,
@@ -384,7 +445,10 @@ const FuelTrackingManagement = () => {
     vehicleId: selectedVehicleId || "",
     startKm: selectedVehicleId ? dynamicStartKm : 0,
     endKm: 0,
-    fuelQuantity: 0,
+    // Prefill with previous fuel quantity when vehicle selected
+    fuelQuantity: selectedVehicleId && previousFuelQuantity > 0 ? previousFuelQuantity : 0,
+    // Helper field: amount user wants to add to previous fuel quantity
+    addFuelQuantity: 0,
     fuelRate: 0,
     date: new Date().toISOString().split('T')[0],
     description: "",
@@ -392,7 +456,7 @@ const FuelTrackingManagement = () => {
   });
 
   // Generate dynamic field configuration with options
-  const getFuelTrackingFields = (selectedAppUserId?: string): any[] => {
+  const getFuelTrackingFields = (selectedAppUserId?: string, mode?: 'create' | 'edit'): any[] => {
     const baseFields: any[] = fuelTrackingFields.map(field => {
       if (field.name === 'appUserId') {
         return {
@@ -425,26 +489,118 @@ const FuelTrackingManagement = () => {
         return {
           ...field,
           defaultValue: selectedVehicleId ? dynamicStartKm : 0,
-          placeholder: selectedVehicleId && dynamicStartKm > 0 
-            ? `Auto-filled from latest trip: ${dynamicStartKm} km` 
+          placeholder: selectedVehicleId && dynamicStartKm > 0
+            ? (startKmSource === 'fuel'
+              ? `Auto-filled from previous fuel record end: ${dynamicStartKm} km`
+              : `Auto-filled from previous trip start: ${dynamicStartKm} km`)
             : "Enter start KM"
         };
       }
+      if (field.name === 'endKm') {
+        return {
+          ...field,
+          defaultValue: 0,
+          placeholder: "Enter end KM"
+        };
+      }
+      if (field.name === 'fuelQuantity') {
+        return {
+          ...field,
+          ...(mode === 'create'
+            ? {
+                defaultValue:
+                  selectedVehicleId && previousFuelQuantity > 0
+                    ? previousFuelQuantity
+                    : 0,
+              }
+            : {}),
+          placeholder:
+            selectedVehicleId && previousFuelQuantity > 0
+              ? `Auto-filled previous: ${previousFuelQuantity.toFixed(2)} L. Type amount to add.`
+              : field.placeholder,
+        };
+      }
+      if (field.name === 'addFuelQuantityHelper') {
+        return field; // passthrough
+      }
       return field;
     });
-  
-    // Add carry-forward fuel information field if a vehicle is selected and has remaining fuel
-    if (selectedVehicleId && previousRemainingFuel > 0) {
-      // Insert the carry-forward info field after vehicleId (index 2) and before startKm
-      const carryForwardField = {
-        name: "carryForwardInfo",
-        label: "Previous Remaining Fuel",
+
+    // Insert computed total amount info right after fuelRate field
+    const fuelRateIndex = baseFields.findIndex(f => f.name === 'fuelRate');
+    if (fuelRateIndex !== -1) {
+      const computedTotalField = {
+        name: "computedTotalAmountInfo",
+        label: "Total Amount",
         type: "info" as const,
-        value: `${previousRemainingFuel.toFixed(2)} L will be carried forward from the previous record`,
+        value:
+          computedTotalAmount && computedTotalAmount > 0
+            ? `${formatCurrency(computedTotalAmount)} = add fuel × rate`
+            : "Total appears after entering add fuel and rate",
         required: false,
       } as const;
-      
-      baseFields.splice(3, 0, carryForwardField);
+      baseFields.splice(fuelRateIndex + 1, 0, computedTotalField);
+    }
+
+    // Add computed average info and previous fuel quantity info when vehicle selected
+    if (selectedVehicleId) {
+      // Insert previous fuel quantity after vehicleId and before startKm
+      const previousFuelQtyField = {
+        name: "previousFuelQuantityInfo",
+        label: "Previous Fuel Quantity",
+        type: "info" as const,
+        value:
+          previousFuelQuantity > 0
+            ? `${previousFuelQuantity.toFixed(2)} L from the latest fuel record`
+            : "No previous fuel quantity for this vehicle",
+        required: false,
+      } as const;
+      baseFields.splice(3, 0, previousFuelQtyField);
+
+      // Insert computed average info right after endKm field
+      const computedAvgField = {
+        name: "computedAverageInfo",
+        label: "Computed Average",
+        type: "info" as const,
+        value:
+          computedAverage && computedAverage > 0
+            ? `${computedAverage.toFixed(2)} km/L = (end - start) / add fuel`
+            : "Average will appear after entering start, end and add fuel",
+        required: false,
+      } as const;
+      const endKmIndex = baseFields.findIndex(f => f.name === 'endKm');
+      if (endKmIndex !== -1) {
+        baseFields.splice(endKmIndex + 1, 0, computedAvgField);
+      }
+
+      // Insert Add Fuel Quantity helper right after fuelQuantity field
+      const fuelQtyIndex = baseFields.findIndex(f => f.name === 'fuelQuantity');
+      if (fuelQtyIndex !== -1) {
+        const addFuelHelperField = {
+          name: 'addFuelQuantity',
+          label: 'Add Fuel Quantity',
+          type: 'number' as const,
+          placeholder:
+            previousFuelQuantity > 0
+              ? `Previous: ${previousFuelQuantity.toFixed(2)} L. Type amount to add.`
+              : 'Type amount to add',
+          required: false,
+          onChangeEffect: (typed: number, ctx: {
+            mode: 'create' | 'edit';
+            setValue: (name: string, value: any) => void;
+            invokeOnFieldChange: (name: string, value: any) => void;
+          }) => {
+            // Apply addition for displayed fuel quantity value (previous + add)
+            const add = Number(typed) || 0;
+            const base = Number(previousFuelQuantity) || 0;
+            const sum = base + add;
+            ctx.setValue('fuelQuantity', sum);
+            ctx.invokeOnFieldChange('fuelQuantity', sum);
+            ctx.invokeOnFieldChange('addFuelQuantity', add);
+          }
+        } as const;
+        baseFields.splice(fuelQtyIndex + 1, 0, addFuelHelperField);
+      }
     }
   
     return baseFields;
@@ -480,10 +636,11 @@ const FuelTrackingManagement = () => {
               title="Add Fuel Tracking Record"
               description="Create a new fuel tracking record"
               schema={fuelTrackingSchema}
-              fields={getFuelTrackingFields(selectedAppUserId)}
+              fields={getFuelTrackingFields(selectedAppUserId, 'create')}
               defaultValues={getDefaultValues()}
               onSubmit={handleCreate}
               onFieldChange={handleFieldChange}
+              contentClassName="max-h-[80vh] overflow-y-auto"
               submitLabel="Add Record"
               isLoading={loading}
               mode="create"
@@ -649,7 +806,7 @@ const FuelTrackingManagement = () => {
                             title="Edit Fuel Tracking Record"
                             description="Update the fuel tracking record"
                             schema={fuelTrackingSchema}
-                            fields={getFuelTrackingFields(fuel.appUserId._id)}
+                            fields={getFuelTrackingFields(fuel.appUserId._id, 'edit')}
                             defaultValues={{
                               appUserId: fuel.appUserId._id,
                               bankId: fuel.bankId._id,
@@ -664,6 +821,7 @@ const FuelTrackingManagement = () => {
                             }}
                             onSubmit={(data) => handleEdit(data, fuel)}
                             onFieldChange={handleFieldChange}
+                            contentClassName="max-h-[80vh] overflow-y-auto"
                             submitLabel="Update Record"
                             isLoading={loading}
                             mode="edit"

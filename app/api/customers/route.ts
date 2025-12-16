@@ -29,6 +29,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize optional fields to avoid empty strings
+    if (typeof body.gstin === "string" && body.gstin.trim() === "") {
+      delete body.gstin;
+    }
+    if (typeof body.address === "string" && body.address.trim() === "") {
+      delete body.address;
+    }
+
     const customer = new Customer(body);
     await customer.save();
     return NextResponse.json(customer, { status: 201 });

@@ -4,6 +4,8 @@ export interface AppUser {
   _id: string;
   name: string;
   mobileNo: string;
+  gstin?: string;
+  address?: string;
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;

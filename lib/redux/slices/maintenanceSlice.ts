@@ -122,18 +122,18 @@ export const fetchMaintenanceNotifications = createAsyncThunk(
 
 export const acceptMaintenanceNotification = createAsyncThunk(
   'maintenance/acceptMaintenanceNotification',
-  async (maintenanceId: string) => {
-    const response = await fetch(`/api/maintenance/${maintenanceId}`, {
-      method: 'PUT',
+  async ({ maintenanceId, categoryAmount }: { maintenanceId: string; categoryAmount: number }) => {
+    const response = await fetch(`/api/maintenance/${maintenanceId}/accept`, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ action: 'accept' }),
+      body: JSON.stringify({ categoryAmount }),
     });
     
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Failed to accept maintenance notification');
+      throw new Error(error.message || 'Failed to accept maintenance notification');
     }
     return response.json();
   }
@@ -231,7 +231,7 @@ const maintenanceSlice = createSlice({
       
       // Accept notification
       .addCase(acceptMaintenanceNotification.fulfilled, (state, action) => {
-        const { maintenance } = action.payload;
+        const { maintenance } = action.payload.data;
         // Update the maintenance record
         const index = state.maintenanceRecords.findIndex(record => record._id === maintenance._id);
         if (index !== -1) {
